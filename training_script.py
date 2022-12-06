@@ -330,7 +330,7 @@ def main():
 
     experiment_config = vars(args)
     # TensorBoard cannot log Enums, need the raw value
-    accelerator.init_trackers("gptpr_trainer", experiment_config)
+    accelerator.init_trackers("gptpr_training", experiment_config)
 
     # Train!
     total_batch_size = (
