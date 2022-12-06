@@ -1,0 +1,10 @@
+{
+    "dataset_dir": "plans",
+    "tokenizer_file": "logistics_tokenizer.json",
+    "per_device_train_batch_size": 1,
+    "per_device_eval_batch_size": 1,
+    "num_train_epochs": 1,
+    "output_dir": "/tmp/plorenzi/training_gpt_pr",
+    "seed": 7,
+    "checkpointing_steps": "epochs"
+}
