@@ -164,7 +164,7 @@ def main():
         level=logging.INFO,
         handlers=[
             logging.StreamHandler(sys.stdout),
-            logging.FileHandler(args.output_dir + "\log.txt"),
+            logging.FileHandler(args.output_dir + "/log.txt"),
         ],
     )
     logger.info(accelerator.state, main_process_only=False)
