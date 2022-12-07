@@ -143,14 +143,16 @@ def main():
     else:
         (args,) = parser.parse_args_into_dataclasses()
 
+
+    # Create output folder
+    os.makedirs(args.output_dir, exist_ok=True)
+    
     # Initialize the accelerator. We will let the accelerator handle device placement for us in this example.
     # If we're using tracking, we also need to initialize it here and it will by default pick up all supported trackers
     # in the environment
     accelerator_log_kwargs = {}
     accelerator_log_kwargs["log_with"] = "tensorboard"
     accelerator_log_kwargs["logging_dir"] = args.output_dir
-
-    eval_dir = args.output_dir + "\eval"
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -179,8 +181,6 @@ def main():
     if args.seed is not None:
         set_seed(args.seed)
 
-    # Create output folder
-    os.makedirs(args.output_dir, exist_ok=True)
     accelerator.wait_for_everyone()
 
     # Load dataset from dataset_dir. Default folder is plans, so relative to script execution path
