@@ -6,5 +6,6 @@
     "num_train_epochs": 8,
     "output_dir": "training_gpt",
     "seed": 7,
-    "checkpointing_steps": "epochs"
+    "checkpointing_steps": "epoch",
+    "save_total_limit": 5
 }
