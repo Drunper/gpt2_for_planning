@@ -223,7 +223,7 @@ def main():
     # Preprocessing the datasets.
     # First we tokenize all the plans.
 
-    column_names = ["name", "states", "actions"]
+    column_names = ["name", "states", "actions", "actions_idx", "eoa_idx"]
 
     def tokenize_function(examples):
         return tokenizer(
