@@ -212,7 +212,7 @@ def main():
         eos_token_id=tokenizer.eos_token_id,
     )
 
-    model = GPT2LMHeadModel(config)
+    model = GPT2PRModel(config)
     n_params = sum(t.numel() for t in model.parameters())
     logger.info(
         f"Training GPT2 model from scratch - Total size={n_params/2**20:.2f}M params"
@@ -223,7 +223,7 @@ def main():
     # Preprocessing the datasets.
     # First we tokenize all the plans.
 
-    column_names = ["name", "states", "actions", "actions_idx", "eoa_idx"]
+    column_names = ["name", "states", "actions"]
 
     def tokenize_function(examples):
         return tokenizer(
@@ -445,7 +445,7 @@ def main():
             logits = outputs.logits
             for i in range(logits.shape[0]):
                 example_logits = logits[
-                    i, :
+                    i, batch["actions_idx"][i].item():batch["eoa_idx"][i].item()
                 ]
                 example_output = []
                 for j in range(example_logits.shape[0]):
@@ -453,10 +453,10 @@ def main():
                     argmax_output = argmax(softmax_output)
                     pred_token = tokenizer.decode(argmax_output)
                     context = tokenizer.decode(
-                        batch["input_ids"][i][:j]
+                        batch["input_ids"][i][:batch["actions_idx"][i].item() + j]
                     )
                     real_token = tokenizer.decode(
-                        batch["input_ids"][i][j]
+                        batch["input_ids"][i][batch["actions_idx"][i].item() + j]
                     )
                     token_output = {
                         "context": context,

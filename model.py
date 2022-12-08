@@ -68,26 +68,35 @@ class GPT2PRModel(GPT2LMHeadModel):
         if labels is not None:
             # Shift so that tokens < n predict n, but only for tokens after <|actions|>
             # The <|actions|> token could be in a different position for the examples
-            # in the batch. So we cannot do operation using tensors, we need to calculate
-            # the loss for every example, then sum and average. (if i'm not wrong)
-            loss_fct = (
-                CrossEntropyLoss()
-            )  # No need to specify ignore index, data collator already takes care of that
-            losses = []
+            # in the batch. 
+            loss_fct = CrossEntropyLoss() # No need to specify ignore index, data collator already takes care of that
 
+            logits_list = []
+            labels_list = []
             for i in range(lm_logits.shape[0]):  # shape[0] is the batch size
-                # I suppose that lm_logits has shape(n_batch, n_tokens, vocab_size),
-                # otherwise i don't know how to make this thing works
                 start_index = actions_idx[i].item()
                 shift_logits = lm_logits[i, start_index:-1, :].contiguous()
                 shift_labels = labels[i, 1 + start_index :].contiguous()
-                # Flatten the tokens
-                losses.append(loss_fct(
-                    shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)
-                ))
+                logits_list.append(shift_logits)
+                labels_list.append(shift_labels)
 
-            losses = torch.stack(losses)
-            loss = torch.mean(losses)
+            length_of_first = logits_list[0].size(0)
+            are_tensors_same_length = all(x.size(0) == length_of_first for x in logits_list)
+            if are_tensors_same_length:
+                final_lm_logits = torch.stack(logits_list, dim=0)
+                final_labels = torch.stack(labels_list, dim=0)
+            else:
+                max_length = max(x.size(0) for x in logits_list)
+                final_lm_logits = lm_logits.new_full([len(logits_list), max_length, logits_list[0].size(1)], 0.0)
+                for i, single_logits in enumerate(logits_list):
+                    final_lm_logits[i, : single_logits.size(0), :] = single_logits
+                final_labels = labels.new_full([len(labels_list), max_length], -100)
+                for i, single_labels in enumerate(labels_list):
+                    final_labels[i, : single_labels.size(0)] = single_labels
+
+            loss_fct = CrossEntropyLoss() # No need to specify ignore index, data collator already takes care of that
+            loss = loss_fct(final_lm_logits.view(-1, final_lm_logits.size(-1)), final_labels.view(-1))
+
 
         if not return_dict:
             output = (lm_logits,) + transformer_outputs[1:]

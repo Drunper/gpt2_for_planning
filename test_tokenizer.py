@@ -37,7 +37,8 @@ def main():
             remove_columns=['name', 'states', 'actions', 'actions_idx', 'eoa_idx'],
             desc="Running tokenizer on dataset",
         )
-    print(tokenized_datasets['train'][0])
+    print(tokenized_datasets['train'][0]['input_ids'])
 
 if __name__ == "__main__":
     main()
+    
