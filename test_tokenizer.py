@@ -34,7 +34,7 @@ def main():
     tokenized_datasets = datasets.map(
             tokenize_function,
             batched=True,
-            remove_columns=['name', 'states', 'actions'],
+            remove_columns=['name', 'states', 'actions', 'actions_idx', 'eoa_idx'],
             desc="Running tokenizer on dataset",
         )
     print(tokenized_datasets['train'][0])
