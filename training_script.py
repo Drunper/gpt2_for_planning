@@ -468,11 +468,12 @@ def main():
         write_eval_to_file(
             output_dir=args.output_dir, eval_output=eval_output, epoch=epoch
         )
+        logger.info(f"Evaluation output saved in eval_epoch_{epoch}.txt")
 
         losses = torch.cat(losses)
         eval_loss = torch.mean(losses)
 
-        logger.info(f"epoch {epoch}: eval_loss: {eval_loss}")
+        logger.info(f"epoch {epoch}: train_loss: {total_loss.item() / len(train_dataloader)}, eval_loss: {eval_loss}")
 
         accelerator.log(
                 {
@@ -507,6 +508,9 @@ def main():
 
     accelerator.end_training()
 
+    logger.info("Training finished successfully!")
+    logger.info("Saving model and tokenizer...")
+
     if args.output_dir is not None:
         accelerator.wait_for_everyone()
         unwrapped_model = accelerator.unwrap_model(model)
@@ -517,6 +521,8 @@ def main():
         )
         if accelerator.is_main_process:
             tokenizer.save_pretrained(args.output_dir)
+
+    logger.info("Model and tokenizer saved successfully!")
 
 
 def sorted_checkpoints(
