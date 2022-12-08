@@ -47,7 +47,7 @@ from transformers import (
     HfArgumentParser,
     DataCollatorForLanguageModeling,
     AutoConfig,
-    SchedulerType,
+    GPT2LMHeadModel,
     PreTrainedTokenizerFast,
     get_scheduler,
 )
@@ -212,7 +212,7 @@ def main():
         eos_token_id=tokenizer.eos_token_id,
     )
 
-    model = GPT2PRModel(config)
+    model = GPT2LMHeadModel(config)
     n_params = sum(t.numel() for t in model.parameters())
     logger.info(
         f"Training GPT2 model from scratch - Total size={n_params/2**20:.2f}M params"
