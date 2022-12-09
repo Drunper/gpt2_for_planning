@@ -160,6 +160,7 @@ def main():
     )
 
     eval_dir = os.path.join(args.output_dir, "eval_output")
+    os.makedirs(eval_dir, exist_ok=True)
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
