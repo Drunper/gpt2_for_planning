@@ -159,6 +159,8 @@ def main():
         **accelerator_log_kwargs,
     )
 
+    eval_dir = os.path.join(args.output_dir, "eval_output")
+
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -166,7 +168,7 @@ def main():
         level=logging.INFO,
         handlers=[
             logging.StreamHandler(sys.stdout),
-            logging.FileHandler(args.output_dir + "/log.txt"),
+            logging.FileHandler(os.path.join(args.output_dir, "log.txt")),
         ],
     )
     logger.info(accelerator.state, main_process_only=False)
@@ -330,13 +332,11 @@ def main():
 
     experiment_config = vars(args)
     # TensorBoard cannot log Enums, need the raw value
-    accelerator.init_trackers("gptpr_training", experiment_config)
+    accelerator.init_trackers("tensorboard_dir", experiment_config)
 
     # Train!
     total_batch_size = (
-        args.per_device_train_batch_size
-        * accelerator.num_processes
-        * args.gradient_accumulation_steps
+        args.per_device_train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
     )
 
     logger.info("***** Running training *****")
@@ -466,23 +466,22 @@ def main():
                     example_output.append(token_output)
                 eval_output.append(example_output)
         write_eval_to_file(
-            output_dir=args.output_dir, eval_output=eval_output, epoch=epoch
+            output_dir=eval_dir, eval_output=eval_output, epoch=epoch
         )
         logger.info(f"Evaluation output saved in eval_epoch_{epoch}.txt")
 
         losses = torch.cat(losses)
         eval_loss = torch.mean(losses)
 
-        logger.info(f"epoch {epoch}: train_loss: {total_loss.item() / len(train_dataloader)}, eval_loss: {eval_loss}")
+        logger.info(f"epoch {epoch}: train_loss: {total_loss.item() / len(train_dataloader)}, valid_loss: {eval_loss}")
 
         accelerator.log(
                 {
-                    "eval_loss": eval_loss,
+                    "valid_loss": eval_loss,
                     "train_loss": total_loss.item() / len(train_dataloader),
-                    "epoch": epoch,
                     "step": completed_steps,
                 },
-                step=completed_steps,
+                step=epoch + 1,
             )
 
         if epoch < args.num_train_epochs - 1:
