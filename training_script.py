@@ -469,7 +469,7 @@ def main():
         write_eval_to_file(
             output_dir=eval_dir, eval_output=eval_output, epoch=epoch
         )
-        logger.info(f"Evaluation output saved in eval_epoch_{epoch}.txt")
+        logger.info(f"Evaluation output saved in {args.output_dir}/eval_output/eval_epoch_{epoch}.txt")
 
         losses = torch.cat(losses)
         eval_loss = torch.mean(losses)
