@@ -28,7 +28,7 @@ class GPT2PRModel(GPT2LMHeadModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         actions_idx: Optional[torch.LongTensor] = None,
-        eoa_idx: Optional[torch.LongTensor] = None,
+        eop_idx: Optional[torch.LongTensor] = None,
     ) -> Union[Tuple, CausalLMOutputWithCrossAttentions]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):

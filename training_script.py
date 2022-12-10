@@ -446,7 +446,7 @@ def main():
             logits = outputs.logits
             for i in range(logits.shape[0]):
                 example_logits = logits[
-                    i, batch["actions_idx"][i].item():batch["eoa_idx"][i].item()
+                    i, batch["actions_idx"][i].item():batch["eop_idx"][i].item()
                 ]
                 example_output = []
                 for j in range(example_logits.shape[0]):
@@ -454,10 +454,10 @@ def main():
                     argmax_output = argmax(softmax_output)
                     pred_token = tokenizer.decode(argmax_output)
                     context = tokenizer.decode(
-                        batch["input_ids"][i][:batch["actions_idx"][i].item() + j]
+                        batch["input_ids"][i][:batch["actions_idx"][i].item() + j + 1]
                     )
                     real_token = tokenizer.decode(
-                        batch["input_ids"][i][batch["actions_idx"][i].item() + j]
+                        batch["input_ids"][i][batch["actions_idx"][i].item() + j + 1]
                     )
                     token_output = {
                         "context": context,
