@@ -478,9 +478,8 @@ def main():
 
         accelerator.log(
                 {
-                    "valid_loss": eval_loss,
+                    "valid_loss": eval_loss.item(),
                     "train_loss": total_loss.item() / len(train_dataloader),
-                    "step": completed_steps,
                 },
                 step=epoch + 1,
             )
