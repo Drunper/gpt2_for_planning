@@ -205,12 +205,13 @@ def main():
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
 
-    max_length = 512
+    max_sequence_length = 512
 
     config = AutoConfig.from_pretrained(
         "gpt2",
         vocab_size=len(tokenizer),
-        n_ctx=max_length,  # ??
+        n_ctx=max_sequence_length,  # ??
+        n_positions=max_sequence_length,
         bos_token_id=tokenizer.bos_token_id,
         eos_token_id=tokenizer.eos_token_id,
     )
