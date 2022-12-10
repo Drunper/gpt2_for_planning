@@ -580,9 +580,9 @@ def write_eval_to_file(output_dir=None, eval_output=None, epoch=None):
         output_file.write(f"***** Evaluation loop for epoch {epoch}  *****\n")
         for idx, example_output in enumerate(eval_output):
             output_file.write(f"***** Evaluation on example {idx}  *****\n")
-            output_file.write(f"--- states: {eval_output['states']}\n")
+            output_file.write(f"--- states: {example_output['states']}\n")
             output_file.write(f"------------------------------------------\n")
-            for token_output in eval_output["evaluations"]:
+            for token_output in example_output["evaluations"]:
                 output_file.write(f"--- seen_actions: {token_output['seen_actions']}\n")
                 output_file.write(f"--- pred_token: {token_output['pred_token']}\n")
                 output_file.write(f"--- real_token: {token_output['real_token']}\n")
