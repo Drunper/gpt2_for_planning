@@ -21,6 +21,7 @@
 # specific dataset, with a custom evaluation loop.
 
 import logging
+import json
 import math
 import os
 import random
@@ -449,23 +450,27 @@ def main():
                 example_logits = logits[
                     i, batch["actions_idx"][i].item():batch["eop_idx"][i].item()
                 ]
-                example_output = []
+                example_output = dict()
+                example_output["states"] = tokenizer.decode(batch["input_ids"][i][:batch["actions_idx"][i].item() + 1])
+                evaluations = []
                 for j in range(example_logits.shape[0]):
                     softmax_output = softmax(example_logits[j])
                     argmax_output = argmax(softmax_output)
                     pred_token = tokenizer.decode(argmax_output)
-                    context = tokenizer.decode(
-                        batch["input_ids"][i][:batch["actions_idx"][i].item() + j + 1]
-                    )
+                    seen_actions = tokenizer.decode(
+                        batch["input_ids"][i][batch["actions_idx"][i].item() + 1:batch["actions_idx"][i].item() + j + 1]
+                    ) if j != 0 else ""
                     real_token = tokenizer.decode(
                         batch["input_ids"][i][batch["actions_idx"][i].item() + j + 1]
                     )
                     token_output = {
-                        "context": context,
+                        "seen_actions": seen_actions,
                         "pred_token": pred_token,
                         "real_token": real_token,
+                        "match": pred_token == real_token,
                     }
-                    example_output.append(token_output)
+                    evaluations.append(token_output)
+                example_output["evaluations"] = evaluations
                 eval_output.append(example_output)
         write_eval_to_file(
             output_dir=eval_dir, eval_output=eval_output, epoch=epoch
@@ -575,11 +580,19 @@ def write_eval_to_file(output_dir=None, eval_output=None, epoch=None):
         output_file.write(f"***** Evaluation loop for epoch {epoch}  *****\n")
         for idx, example_output in enumerate(eval_output):
             output_file.write(f"***** Evaluation on example {idx}  *****\n")
-            for token_output in example_output:
-                output_file.write(f"--- context: {token_output['context']} \n")
-                output_file.write(f"--- pred_token: {token_output['pred_token']} \n")
-                output_file.write(f"--- real_token: {token_output['real_token']} \n")
+            output_file.write(f"--- states: {eval_output['states']}\n")
+            output_file.write(f"------------------------------------------\n")
+            for token_output in eval_output["evaluations"]:
+                output_file.write(f"--- seen_actions: {token_output['seen_actions']}\n")
+                output_file.write(f"--- pred_token: {token_output['pred_token']}\n")
+                output_file.write(f"--- real_token: {token_output['real_token']}\n")
+                output_file.write(f"--- match: {token_output['match']}\n")
                 output_file.write(f"------------------------------------------\n")
+    
+    file_name = Path(output_dir, f"eval_epoch_{epoch}.json")
+    with open(file_name, "w", encoding="UTF8") as output_file:
+        json_str = json.dumps(eval_output, indent=4)
+        output_file.write(json_str)
 
 
 if __name__ == "__main__":
