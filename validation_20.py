@@ -87,7 +87,8 @@ def main():
         example_output = []
         for i in range(5):
             inputs = batch['input_ids'][0, :batch['actions_idx'] + i + 1]
-            outputs = model.generate(inputs, do_sample=False, max_length=60)
+            with torch.no_grad():
+                outputs = model.generate(inputs, do_sample=False, max_length=60)
 
             decoded_inputs = tokenizer.decode(inputs)
             decoded_outputs = tokenizer.decode(outputs)
