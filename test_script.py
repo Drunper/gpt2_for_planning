@@ -56,7 +56,7 @@ def main():
 
     dataset = load_dataset("json", data_files=args.dataset_file)
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path)
-    model = GPT2PRModel.from_pretrained(args.model_path)
+    model = GPT2PRModel.from_pretrained(args.model_path, device_map="auto")
     metric = evaluate.load("Drunper/metrica_tesi")
 
     def tokenize_function(examples):
