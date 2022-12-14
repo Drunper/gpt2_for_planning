@@ -90,7 +90,7 @@ def main():
             with torch.no_grad():
                 outputs = model.generate(inputs, do_sample=False, max_length=60)
 
-            decoded_inputs = tokenizer.decode(inputs)
+            decoded_inputs = tokenizer.decode(inputs[0])
             decoded_outputs = tokenizer.decode(outputs)
             example_output.append({'input': decoded_inputs, 'output': decoded_outputs})
         eval_output.append(example_output)
