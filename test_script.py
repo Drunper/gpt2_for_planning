@@ -109,13 +109,13 @@ def main():
     test_loss = total_loss / len(test_dataloader)
 
     metric_results = metric.compute()
-    metric_results['test_loss'] = test_loss
+    metric_results['test_loss'] = test_loss.item()
 
     print(metric_results)
 
-    output_path = Path(args.output_dir, "results.txt")
+    output_path = Path(args.output_dir, "test_results.txt")
     with open(output_path, "w") as output_file:
-        for key, value in metric_results:
+        for key, value in metric_results.items():
             output_file.write(f"{key}: {value}\n")
 
 if __name__ == "__main__":
