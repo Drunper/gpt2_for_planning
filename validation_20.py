@@ -88,11 +88,12 @@ def main():
         for i in range(5):
             inputs = batch['input_ids'][:, :batch['actions_idx'] + i + 1]
             with torch.no_grad():
-                outputs = model.generate(inputs, do_sample=False, max_length=60)
+                outputs = model.generate(inputs, do_sample=False, max_length=60, pad_token_id=tokenizer.pad_token_id)
 
             decoded_inputs = tokenizer.decode(inputs[0])
             decoded_outputs = tokenizer.decode(outputs[0])
-            example_output.append({'input': decoded_inputs, 'output': decoded_outputs})
+            real_plan = tokenizer.decode(batch['input_ids'][0, batch['actions_idx'] + i + 1:batch['eop_idx'].item()])
+            example_output.append({'input': decoded_inputs, 'output': decoded_outputs, 'real_plan': real_plan})
         eval_output.append(example_output)
 
             
@@ -108,6 +109,7 @@ def write_output_to_file(output_dir=None, eval_output=None):
             for evaluation in example_output:
                 output_file.write(f"--- input: {evaluation['input']}\n")
                 output_file.write(f"--- output: {evaluation['output']}\n")
+                output_file.write(f"--- real_plan: {evaluation['real_plan']}\n")
                 output_file.write(f"------------------------------------------\n")
 
 
