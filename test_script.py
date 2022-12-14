@@ -85,7 +85,7 @@ def main():
         batch_size=16,
     )
 
-    losses = []
+    total_loss = 0.0
     for step, batch in enumerate(test_dataloader):
         with torch.no_grad():
             input_ids = batch['input_ids'].to('cuda')
@@ -97,7 +97,7 @@ def main():
             outputs = model(input_ids=input_ids, labels=labels, attention_mask=attention_mask, actions_idx=actions_idx, eop_idx=eop_idx)
 
         loss = outputs.loss
-        losses.append(loss)
+        total_loss += loss.detach().float()
         logits = outputs.logits
         for i in range(logits.shape[0]):
             example_logits = logits[i, batch['actions_idx'][i].item():batch['eop_idx'][i].item()]
@@ -106,8 +106,7 @@ def main():
                 reference = batch['input_ids'][i][batch['actions_idx'][i].item() + j + 1]
                 metric.add(references=reference, predictions=prediction, actions_seen=j)
 
-    losses = torch.cat(losses)
-    test_loss = torch.mean(losses).item()
+    test_loss = total_loss / len(test_dataloader)
 
     metric_results = metric.compute()
     metric_results['test_loss'] = test_loss
