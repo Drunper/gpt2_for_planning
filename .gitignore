@@ -131,3 +131,4 @@ dmypy.json
 # Training folder
 training_gpt/
 training_parameters.json
+validation_20_parameters.json
