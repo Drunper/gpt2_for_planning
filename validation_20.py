@@ -86,7 +86,7 @@ def main():
     for step, batch in enumerate(eval_dataloader):
         example_output = []
         for i in range(5):
-            inputs = batch['input_ids'][0, :batch['actions_idx'] + i + 1]
+            inputs = batch['input_ids'][:, :batch['actions_idx'] + i + 1]
             with torch.no_grad():
                 outputs = model.generate(inputs, do_sample=False, max_length=60)
 
