@@ -82,7 +82,7 @@ def main():
     test_dataloader = DataLoader(
         tokenized_datasets['train'],
         collate_fn=data_collator,
-        batch_size=1,
+        batch_size=16,
     )
 
     losses = []
