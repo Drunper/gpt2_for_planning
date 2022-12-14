@@ -1,0 +1,6 @@
+{
+    "dataset_file": "plans/logistics_plans_test_0.json",
+    "tokenizer_path": "training_gpt",
+    "model_path": "training_gpt",
+    "output_dir": "training_gpt"
+}

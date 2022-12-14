@@ -87,6 +87,7 @@ def main():
         example_output = []
         for i in range(5):
             inputs = batch['input_ids'][:, :batch['actions_idx'] + i + 1]
+            inputs = inputs.to('cuda')
             with torch.no_grad():
                 outputs = model.generate(inputs, do_sample=False, max_length=60, pad_token_id=tokenizer.pad_token_id)
 
