@@ -88,7 +88,13 @@ def main():
     losses = []
     for step, batch in enumerate(test_dataloader):
         with torch.no_grad():
-            outputs = model(**batch)
+            input_ids = batch['input_ids'].to('cuda')
+            labels = batch['labels'].to('cuda')
+            attention_mask = batch['attention_mask'].to('cuda')
+            actions_idx = batch['actions_idx'].to('cuda')
+            eop_idx = batch['eop_idx'].to('cuda')
+
+            outputs = model(input_ids=input_ids, labels=labels, attention_mask=attention_mask, actions_idx=actions_idx, eop_idx=eop_idx)
 
         loss = outputs.loss
         losses.append(loss)
