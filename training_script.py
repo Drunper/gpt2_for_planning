@@ -36,11 +36,11 @@ from dataclasses import dataclass, field
 import torch
 from datasets import load_dataset
 from torch.utils.data import DataLoader
-from torch.nn import Softmax
 from torch import argmax
 from tqdm.auto import tqdm
 
 import transformers
+import evaluate
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
@@ -292,6 +292,8 @@ def main():
     ]
     optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=args.learning_rate)
 
+    metric = evaluate.load("Drunper/metrica_tesi")
+
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
     num_update_steps_per_epoch = math.ceil(
@@ -433,8 +435,7 @@ def main():
         logger.info(f"***** Running evaluation for epoch {epoch} *****")
         model.eval()
         losses = []
-        softmax = Softmax(dim=0)
-        eval_output = []
+        # eval_output = []
         for step, batch in enumerate(eval_dataloader):
             with torch.no_grad():
                 outputs = model(**batch)
@@ -447,46 +448,56 @@ def main():
             )
             logits = outputs.logits
             for i in range(logits.shape[0]):
-                example_logits = logits[
-                    i, batch["actions_idx"][i].item():batch["eop_idx"][i].item()
-                ]
-                example_output = dict()
-                example_output["states"] = tokenizer.decode(batch["input_ids"][i][:batch["actions_idx"][i].item() + 1])
-                evaluations = []
+                example_logits = logits[i, batch['actions_idx'][i].item():batch['eop_idx'][i].item()]
                 for j in range(example_logits.shape[0]):
-                    softmax_output = softmax(example_logits[j])
-                    argmax_output = argmax(softmax_output)
-                    pred_token = tokenizer.decode(argmax_output)
-                    seen_actions = tokenizer.decode(
-                        batch["input_ids"][i][batch["actions_idx"][i].item() + 1:batch["actions_idx"][i].item() + j + 1]
-                    ) if j != 0 else ""
-                    real_token = tokenizer.decode(
-                        batch["input_ids"][i][batch["actions_idx"][i].item() + j + 1]
-                    )
-                    token_output = {
-                        "seen_actions": seen_actions,
-                        "pred_token": pred_token,
-                        "real_token": real_token,
-                        "match": pred_token == real_token,
-                    }
-                    evaluations.append(token_output)
-                example_output["evaluations"] = evaluations
-                eval_output.append(example_output)
-        write_eval_to_file(
-            output_dir=eval_dir, eval_output=eval_output, epoch=epoch
-        )
+                    prediction = argmax(example_logits[j])
+                    reference = batch['input_ids'][i][batch['actions_idx'][i].item() + j + 1]
+                    metric.add(references=reference, predictions=prediction, actions_seen=j)
+
+        # Old evaluation loop
+        #     logits = outputs.logits
+        #     for i in range(logits.shape[0]):
+        #         example_logits = logits[
+        #             i, batch["actions_idx"][i].item():batch["eop_idx"][i].item()
+        #         ]
+        #         example_output = dict()
+        #         example_output["states"] = tokenizer.decode(batch["input_ids"][i][:batch["actions_idx"][i].item() + 1])
+        #         evaluations = []
+        #         for j in range(example_logits.shape[0]):
+        #             argmax_output = argmax(example_logits[j])
+        #             pred_token = tokenizer.decode(argmax_output)
+        #             seen_actions = tokenizer.decode(
+        #                 batch["input_ids"][i][batch["actions_idx"][i].item() + 1:batch["actions_idx"][i].item() + j + 1]
+        #             ) if j != 0 else ""
+        #             real_token = tokenizer.decode(
+        #                 batch["input_ids"][i][batch["actions_idx"][i].item() + j + 1]
+        #             )
+        #             token_output = {
+        #                 "seen_actions": seen_actions,
+        #                 "pred_token": pred_token,
+        #                 "real_token": real_token,
+        #                 "match": pred_token == real_token,
+        #             }
+        #             evaluations.append(token_output)
+        #         example_output["evaluations"] = evaluations
+        #         eval_output.append(example_output)
+        # write_eval_to_file(
+        #     output_dir=eval_dir, eval_output=eval_output, epoch=epoch
+        # )
         logger.info(f"Evaluation output saved in {args.output_dir}/eval_output/eval_epoch_{epoch}.txt")
 
         losses = torch.cat(losses)
-        eval_loss = torch.mean(losses)
+        eval_loss = torch.mean(losses).item()
+        train_loss = total_loss.item() / len(train_dataloader)
 
-        logger.info(f"epoch {epoch}: train_loss: {total_loss.item() / len(train_dataloader)}, valid_loss: {eval_loss}")
+        metric_results = metric.compute()
+        metric_results['train_loss'] = train_loss
+        metric_results['validation_loss'] = eval_loss
+
+        logger.info(f"epoch {epoch}: train_loss: {train_loss}, validation_loss: {eval_loss}")
 
         accelerator.log(
-                {
-                    "valid_loss": eval_loss.item(),
-                    "train_loss": total_loss.item() / len(train_dataloader),
-                },
+                metric_results,
                 step=epoch + 1,
             )
 
