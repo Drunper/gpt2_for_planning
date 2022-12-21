@@ -128,7 +128,11 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# Training folder
+# Training/validation/test folders and files
 training_gpt/
+input/
+output/
 training_parameters.json
 validation_20_parameters.json
+test_parameters.json
+
