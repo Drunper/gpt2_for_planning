@@ -134,7 +134,7 @@ def write_output_to_file(output_dir=None, eval_output=None):
             output_file.write(f"***** Evaluation on example {idx}  *****\n")
             for evaluation in example_output:
                 output_file.write(f"--- input: {evaluation['input']}\n")
-                output_file.write(f"--- actions_seen: {evaluation['actions_seen']}")
+                output_file.write(f"--- actions_seen: {evaluation['actions_seen']}\n")
                 output_file.write(f"--- generated_plan: {evaluation['plan']}\n")
                 output_file.write(f"--- real_plan: {evaluation['real_plan']}\n")
                 output_file.write(f"------------------------------------------\n")
