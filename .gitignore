@@ -134,5 +134,6 @@ input/
 output/
 training_parameters.json
 validation_20_parameters.json
+plan_generator_parameters.json
 test_parameters.json
 
