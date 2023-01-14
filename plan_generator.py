@@ -3,6 +3,7 @@ import sys
 import os
 import json
 import re
+import logging
 from dataclasses import dataclass, field
 
 from unified_planning.engines.compilers.grounder import Grounder
@@ -60,10 +61,15 @@ class ValidationArgs:
         default="domain.pddl",
         metadata={"help": "Name of file containing domain definition"},
     )
+    log_file_name: Optional[str] = field(
+        default="generation.log",
+        metadata={"help": "Log file name"}
+    )
 
 
 reader = PDDLReader()
 grounder = Grounder()
+logger = logging.getLogger(__name__)
 
 
 def main():
@@ -76,10 +82,21 @@ def main():
         (args,) = parser.parse_args_into_dataclasses()
 
     os.makedirs(args.output_dir, exist_ok=True)
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S",
+        level=logging.INFO,
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler(os.path.join(args.output_dir, args.log_file_name)),
+        ],
+    )
 
     dataset = load_dataset("json", data_files=args.dataset_file)
+    logger.info("Dataset loaded successfully")
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path)
     model = GPT2PRModel.from_pretrained(args.model_path, device_map="auto")
+    logger.info("Model loaded successfully")
 
     def tokenize_function(examples):
         return tokenizer(
@@ -107,9 +124,14 @@ def main():
         batch_size=1,
     )
 
+    logger.info("You can safely ignore the warning above ^^")
+    logger.info("Starting generation of plans")
+    logger.info(f"Dataset size: {len(eval_dataloader)}")
     eval_output = []
     token_ids = set(range(len(tokenizer)))
     for step, batch in enumerate(eval_dataloader):
+        if not (step % 500):
+            logger.info(f"Processed {step} plans of {len(eval_dataloader)}")
         example_output = []
         real_plan = tokenizer.decode(
             batch["input_ids"][0, batch["actions_idx"] + 1: batch["eop_idx"].item()]
@@ -212,7 +234,10 @@ def main():
             )
         eval_output.append(example_output)
 
+    logger.info("All plans have been processed")
+    logger.info("Writing output to file")
     write_output_to_file(output_dir=args.output_dir, eval_output=eval_output)
+    logger.info("Output file written successfully")
 
 
 def write_output_to_file(output_dir=None, eval_output=None):
