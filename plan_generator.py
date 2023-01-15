@@ -1,16 +1,9 @@
-import torch
 import sys
 import os
 import json
-import re
 import logging
+import random
 from dataclasses import dataclass, field
-
-from unified_planning.engines.compilers.grounder import Grounder
-from unified_planning.io.pddl_reader import PDDLReader
-from unified_planning.engines import SequentialSimulator
-from unified_planning.model import UPCOWState
-from unified_planning.shortcuts import *
 
 from datasets import load_dataset
 from torch.utils.data import DataLoader
@@ -21,11 +14,9 @@ from transformers import (
     HfArgumentParser,
     DataCollatorForLanguageModeling,
     AutoTokenizer,
-    PreTrainedTokenizer,
-    PreTrainedTokenizerFast,
 )
 
-from typing import List, Optional, Union, cast
+from typing import Optional
 
 
 @dataclass
@@ -39,7 +30,7 @@ class ValidationArgs:
         metadata={"help": "Path to file containing json files of validation set"},
     )
     tokenizer_path: Optional[str] = field(
-        default="logistics_tokenizer.json",
+        default="tokenizer_generation",
         metadata={"help": "Path to tokenizer json file"},
     )
     model_path: Optional[str] = field(
@@ -57,10 +48,6 @@ class ValidationArgs:
         default=0,
         metadata={"help": "Number of actions to add to the input"}
     )
-    save_after: Optional[int] = field(
-        default=10,
-        metadata={"help": "After how many processed samples you want to save the output to file"}
-    )
     pddl_dir: Optional[str] = field(
         default="pddl",
         metadata={"help": "Path to folder containing pddl file"},
@@ -73,10 +60,23 @@ class ValidationArgs:
         default="generation.log",
         metadata={"help": "Log file name"}
     )
+    batch_size: Optional[int] = field(
+        default=4,
+        metadata={"help": "Batch size that will be used during generation"}
+    )
+    save_after: Optional[int] = field(
+        default=10,
+        metadata={
+            "help": (
+                "After how many processed batch you want to save the output to file "
+                "e.g. if batch_size is set to four and save_after is set to 10, then "
+                "after every 10 batch the output will be save, meaning that the output of 40 samples "
+                "will be saved."
+            )                    
+        }
+    )
 
 
-reader = PDDLReader()
-grounder = Grounder()
 logger = logging.getLogger(__name__)
 
 
@@ -106,10 +106,20 @@ def main():
     model = GPT2PRModel.from_pretrained(args.model_path, device_map="auto")
     logger.info("Model loaded successfully")
 
+    def get_inputs_for_generation(examples):
+        output = []
+        for state, actions in zip(examples["states"], examples["actions"]):
+            example = state + " <|actions|>"
+            action_list = actions.split(" ")
+            action_string = " ".join(action_list[:args.actions_seen])
+            if action_string != "":
+                example = example + " " + action_string
+            output.append(example)
+        return {"input": output}
+
     def tokenize_function(examples):
         return tokenizer(
-            examples["states"],
-            examples["actions"],
+            examples["input"],
             return_token_type_ids=False,
             # max_length=max_length,
             # padding='max_length',
@@ -117,140 +127,89 @@ def main():
 
     column_names = ["name", "states", "actions"]
 
-    tokenized_datasets = dataset.map(
-        tokenize_function,
-        batched=True,
-        remove_columns=column_names,
-        desc="Running tokenizer on dataset",
+    pre_processed_dataset = dataset.map(
+            get_inputs_for_generation,
+            batched=True,
+            remove_columns=column_names,
+            desc="Running input pre-processing on dataset",
     )
+
+    tokenized_datasets = pre_processed_dataset.map(
+            tokenize_function,
+            batched=True,
+            remove_columns=['input'],
+            desc="Running tokenizer on dataset",
+    )
+
+    test_dataset = tokenized_datasets["train"]
+    logger.info("You can safely ignore the warning above ^^")
+
+    for index in random.sample(range(len(test_dataset)), 3):
+        logger.info(f"Sample {index} of the test set: {test_dataset[index]}.")
 
     data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
 
-    eval_dataloader = DataLoader(
-        tokenized_datasets["train"],
+    test_dataloader = DataLoader(
+        test_dataset,
         collate_fn=data_collator,
-        batch_size=1,
+        batch_size=args.batch_size,
     )
 
-    logger.info("You can safely ignore the warning above ^^")
     logger.info("Starting generation of plans")
-    logger.info(f"Dataset size: {len(eval_dataloader)}")
+    logger.info(f"Dataset size: {len(tokenized_datasets['train'])}")
     
-    token_ids = set(range(len(tokenizer)))
-    for step, batch in enumerate(eval_dataloader):
+    actions_token_id = tokenizer.convert_tokens_to_ids("<|actions|>")
+    for step, batch in enumerate(test_dataloader):
         if not (step % args.save_after):
-            logger.info(f"Processed {step} plans of {len(eval_dataloader)}")
+            logger.info(f"Processed {step * args.batch_size} plans of {len(test_dataset)}")
             eval_output = []
         example_output = []
-        real_plan = tokenizer.decode(
-            batch["input_ids"][0, batch["actions_idx"] + 1: batch["eop_idx"].item()]
-        )
-        problem_id = dataset["train"][step]["name"].split("-")[-1].split("_")[0]
-        problem, initial_state, simulator = get_simulation_tools(
-            args.pddl_dir, args.pddl_domain_file, problem_id
-        )
 
-        # n_actions = batch["eop_idx"].item() - batch["actions_idx"].item() - 1
-        # for i in range(min(6, n_actions)):
-        input_to_decode = inputs = batch["input_ids"][
-            :, : batch["actions_idx"] + args.actions_seen + 1
-        ]
+        problem_ids_list = []
+        for i in range(batch['input_ids'].shape[0]):
+            problem_id = dataset["train"][step * args.batch_size + i]["name"].split("-")[-1].split("_")[0]
+            problem_ids_list.append(problem_id)
+            logger.info(f"Sample {i} of batch {step} of the test set: {batch['input_ids'][i]}.")
+
+        inputs = batch["input_ids"]
         inputs = inputs.to("cuda")
-        state = initial_state
 
-        for k in range(args.actions_seen):
-            possible_actions_ids_dict = get_possible_actions_ids(
-                problem, state, simulator, tokenizer
-            )
-            action = format_action(tokenizer.decode(batch["input_ids"][:, batch["actions_idx"] + k + 1][0]))
-            action = get_action_by_name(possible_actions_ids_dict, action)
-            state = apply_action_to_state(action, state, simulator)
-
-        possible_actions_ids_dict = get_possible_actions_ids(
-            problem, state, simulator, tokenizer
+        outputs = model.generate(
+            inputs,
+            do_sample=False,
+            max_new_tokens=args.max_length,
+            pad_token_id=tokenizer.pad_token_id,
+            problem_ids_list=problem_ids_list,
+            tokenizer=tokenizer,
+            pddl_dir=args.pddl_dir,
+            pddl_domain_file=args.pddl_domain_file,
+            actions_token_id=actions_token_id
         )
-
-        generated_eop = False
-        j = 0
-        while j < args.max_length and not generated_eop:
-            output = model.generate(
-                inputs,
-                do_sample=False,
-                max_new_tokens=1,
-                pad_token_id=tokenizer.pad_token_id,
-                output_scores=True,
-                return_dict_in_generate=True,
+           
+        for i in range(batch["input_ids"].shape[0]):
+            generated_plan = outputs[i]
+            if generated_plan[-1] == tokenizer.eos_token_id:
+                generated_plan = generated_plan[:-1]
+            example_output.append(
+                {
+                    "input": tokenizer.decode(batch["input_ids"][i]),
+                    "plan": tokenizer.decode(generated_plan),
+                    "actions_seen": args.actions_seen,
+                    "problem_id": problem_ids_list[i],
+                }
             )
 
-                # Prendo solo le logits relative alle azioni possibili e scelgo quella con probabilità più alta
-            possible_actions_ids = set(possible_actions_ids_dict.keys())
-            possible_actions_ids.add(tokenizer.eos_token_id)
-            logits_mask = torch.tensor(list(token_ids - possible_actions_ids)).to("cuda")
-            logits = output.scores[0]
-            logits[:, logits_mask] = float("-Inf")
-            generated_token = torch.argmax(logits, dim=-1)
-
-                # if i == 2:
-                #     print(f"Allora: i vale {i}, j vale {j}")
-                #     print("Gli id possibili sono:")
-                #     print(possible_actions_ids)
-                #     print(f"Il token generato è {generated_token.item()}")
-
-                # Se genero <endofplan> allora ho finito
-            if generated_token.item() == tokenizer.eos_token_id:
-                generated_eop = True
-
-                # Altrimenti uso la sequenza di output ottenuta come input per generare la prossima azione,
-                # aggiorno lo stato andando ad applicare l'azione corrispondente al token generato e
-                # calcolo il nuovo dizionario dei nome_azione-token_id
-            if not generated_eop:
-                j += 1
-                    # tmp = torch.zeros((1, inputs.shape[1] + 1), dtype=inputs.dtype, layout=inputs.layout, device=inputs.device)
-                    # tmp[0, :inputs.shape[1]] = inputs
-                    # tmp[0, -1] = generated_token
-                    # inputs = tmp
-                inputs = torch.cat([inputs, generated_token[:, None]], dim=-1)
-                state = apply_action_to_state(
-                    possible_actions_ids_dict[generated_token.item()],
-                    state,
-                    simulator
-                )
-                possible_actions_ids_dict = get_possible_actions_ids(
-                    problem, state, simulator, tokenizer
-                )
-
-        # L'input da includer nei file di output è quello passato inizialmente
-        decoded_inputs = tokenizer.decode(input_to_decode[0])
-        if generated_eop:
-            output_to_decode = output.sequences[0][batch["actions_idx"] + 1:-1]
-        else:
-            output_to_decode = inputs[0]
-
-        # Se è presente il token di fine piano lo rimuovo
-        if output_to_decode[-1] == tokenizer.eos_token_id:
-            output_to_decode = output_to_decode[:-1]
-        decoded_outputs = tokenizer.decode(output_to_decode)
-        example_output.append(
-            {
-                "input": decoded_inputs,
-                "plan": decoded_outputs,
-                "real_plan": real_plan,
-                "actions_seen": args.actions_seen,
-                "problem_id": problem_id,
-            }
-        )
         eval_output.append(example_output)
         q, r = divmod(step, args.save_after)
         if r == (args.save_after - 1):
-            bounds = (q * args.save_after, step)
+            bounds = (q * args.save_after * args.batch_size, (step + 1) * args.batch_size - 1)
             write_output_to_file(output_dir=args.output_dir, eval_output=eval_output, bounds=bounds)
-
 
 
     logger.info("All plans have been processed")
     logger.info("Writing output to file")
-    if bounds[0] + args.save_after <= len(eval_dataloader) - 1:
-        bounds = (bounds[0] + args.save_after, len(eval_dataloader) - 1)
+    if bounds[1] + 1 <= len(test_dataset) - 1:
+        bounds = (bounds[1] + 1, len(test_dataset) - 1)
         write_output_to_file(output_dir=args.output_dir, eval_output=eval_output, bounds=bounds)
     logger.info("Output file written successfully")
 
@@ -264,7 +223,6 @@ def write_output_to_file(output_dir=None, eval_output=None, bounds=None):
                 output_file.write(f"--- input: {evaluation['input']}\n")
                 output_file.write(f"--- actions_seen: {evaluation['actions_seen']}\n")
                 output_file.write(f"--- generated_plan: {evaluation['plan']}\n")
-                output_file.write(f"--- real_plan: {evaluation['real_plan']}\n")
                 output_file.write(f"------------------------------------------\n")
 
     json_path = Path(output_dir, f"to_validate_{bounds[0]}_{bounds[1]}.json")
@@ -280,92 +238,6 @@ def write_output_to_file(output_dir=None, eval_output=None, bounds=None):
 
     with open(json_path, "w") as output_file:
         json.dump(output, output_file)
-
-
-def get_simulation_tools(pddl_dir, pddl_domain_file, problem_id):
-    problem = reader.parse_problem(
-        pddl_dir + os.sep + pddl_domain_file, pddl_dir + os.sep + problem_id + '.pddl'
-    )
-    problem = grounder.compile(problem).problem
-    init_state = UPCOWState(problem.initial_values)
-    simulator = SequentialSimulator(problem)
-    return problem, init_state, simulator
-
-
-def get_possible_actions(problem, state, simulator):
-    events = simulator.get_applicable_events(state)
-    events = list(events)
-
-    possible_actions = []
-    for ev in events:
-        for ac in problem.actions:
-            if ac.preconditions == ev.conditions and ac.effects == ev.effects:
-                possible_actions.append(ac)
-    return possible_actions
-
-
-def is_action_applicable(action_name, possible_actions):
-    for action in possible_actions:
-        if action.name == action_name:
-            return True
-    return False
-
-
-def get_action_by_name(possible_actions_ids_dict, action_name):
-    possible_actions = list(possible_actions_ids_dict.values())
-    for action in possible_actions:
-        if action.name == action_name:
-            return action
-    return None
-
-
-def apply_action_to_state(action, state, simulator):
-    event = list(simulator.get_events(action, []))[0]
-    next_state = cast(UPCOWState, simulator.apply(event, state))
-    return next_state
-
-
-def format_action(action_name):
-    if action_name.startswith("drivetruck"):
-        tmp = re.sub("drivetruck", "DRIVE-TRUCK ", action_name)
-    elif action_name.startswith("loadtruck"):
-        tmp = re.sub("loadtruck", "LOAD-TRUCK ", action_name)
-    elif action_name.startswith("unloadtruck"):
-        tmp = re.sub("unloadtruck", "UNLOAD-TRUCK ", action_name)
-    elif action_name.startswith("loadairplane"):
-        tmp = re.sub("loadairplane", "LOAD-AIRPLANE ", action_name)
-    elif action_name.startswith("flyairplane"):
-        tmp = re.sub("flyairplane", "FLY-AIRPLANE ", action_name)
-    elif action_name.startswith("unloadairplane"):
-        tmp = re.sub("unloadairplane", "UNLOAD-AIRPLANE ", action_name)
-    else:
-        print(action_name)
-
-    action, objects_string = tmp.split()
-    objects = re.findall("[a-z]+\\d+", objects_string)
-    objects.insert(0, action)
-    return "_".join(objects)
-
-
-def reverse_format(action_name):
-    tmp = action_name.lower()
-    tmp = tmp.split("-")
-    tmp = [tmp[0]] + tmp[1].split("_")
-    return "".join(tmp)
-
-
-def get_possible_actions_ids(
-    problem,
-    state,
-    simulator,
-    tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
-):
-    actions = get_possible_actions(problem, state, simulator)
-    gpt_names = [reverse_format(action.name) for action in actions]
-    ids = tokenizer.encode(" ".join(gpt_names), return_token_type_ids=False)
-    ids = ids[1:-1]
-    actions_ids_dict = {id: action for action, id in zip(actions, ids)}
-    return actions_ids_dict
 
 
 if __name__ == "__main__":

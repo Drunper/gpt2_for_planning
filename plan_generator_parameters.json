@@ -1,6 +1,8 @@
 {
     "dataset_file": "20_plans.json",
-    "tokenizer_path": "../tesi/gpt2_model",
+    "tokenizer_path": "../tesi/tokenizer_generation",
     "model_path": "../tesi/gpt2_model",
-    "output_dir": "training_gpt"
+    "output_dir": "training_gpt",
+    "batch_size": 16,
+    "save_after": 1
 }
