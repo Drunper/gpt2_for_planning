@@ -1,6 +1,6 @@
 {
     "dataset_file": "20_plans.json",
-    "tokenizer_path": "logistics_tokenizer.json",
-    "model_path": "path/to/model",
+    "tokenizer_path": "../tesi/gpt2_model",
+    "model_path": "../tesi/gpt2_model",
     "output_dir": "training_gpt"
 }

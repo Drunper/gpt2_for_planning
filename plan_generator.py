@@ -53,6 +53,14 @@ class ValidationArgs:
         default=60,
         metadata={"help": "Plan max length"},
     )
+    actions_seen: Optional[int] = field(
+        default=0,
+        metadata={"help": "Number of actions to add to the input"}
+    )
+    save_after: Optional[int] = field(
+        default=10,
+        metadata={"help": "After how many processed samples you want to save the output to file"}
+    )
     pddl_dir: Optional[str] = field(
         default="pddl",
         metadata={"help": "Path to folder containing pddl file"},
@@ -127,11 +135,12 @@ def main():
     logger.info("You can safely ignore the warning above ^^")
     logger.info("Starting generation of plans")
     logger.info(f"Dataset size: {len(eval_dataloader)}")
-    eval_output = []
+    
     token_ids = set(range(len(tokenizer)))
     for step, batch in enumerate(eval_dataloader):
-        if not (step % 500):
+        if not (step % args.save_after):
             logger.info(f"Processed {step} plans of {len(eval_dataloader)}")
+            eval_output = []
         example_output = []
         real_plan = tokenizer.decode(
             batch["input_ids"][0, batch["actions_idx"] + 1: batch["eop_idx"].item()]
@@ -141,47 +150,45 @@ def main():
             args.pddl_dir, args.pddl_domain_file, problem_id
         )
 
-        n_actions = batch["eop_idx"].item() - batch["actions_idx"].item() - 1
-        for i in range(min(6, n_actions)):
-            input_to_decode = inputs = batch["input_ids"][
-                :, : batch["actions_idx"] + i + 1
-            ]
-            inputs = inputs.to("cuda")
-            state = initial_state
+        # n_actions = batch["eop_idx"].item() - batch["actions_idx"].item() - 1
+        # for i in range(min(6, n_actions)):
+        input_to_decode = inputs = batch["input_ids"][
+            :, : batch["actions_idx"] + args.actions_seen + 1
+        ]
+        inputs = inputs.to("cuda")
+        state = initial_state
 
-            # Devo partire dallo stato corretto, corrispondente
-            # all'applicazione di tutte le azioni presenti nell'input
-            for k in range(i):
-                possible_actions_ids_dict = get_possible_actions_ids(
-                    problem, state, simulator, tokenizer
-                )
-                action = format_action(tokenizer.decode(batch["input_ids"][:, batch["actions_idx"] + k + 1][0]))
-                action = get_action_by_name(possible_actions_ids_dict, action)
-                state = apply_action_to_state(action, state, simulator)
-
+        for k in range(args.actions_seen):
             possible_actions_ids_dict = get_possible_actions_ids(
                 problem, state, simulator, tokenizer
             )
+            action = format_action(tokenizer.decode(batch["input_ids"][:, batch["actions_idx"] + k + 1][0]))
+            action = get_action_by_name(possible_actions_ids_dict, action)
+            state = apply_action_to_state(action, state, simulator)
 
-            generated_eop = False
-            j = i
-            while j < args.max_length and not generated_eop:
-                output = model.generate(
-                    inputs,
-                    do_sample=False,
-                    max_new_tokens=1,
-                    pad_token_id=tokenizer.pad_token_id,
-                    output_scores=True,
-                    return_dict_in_generate=True,
-                )
+        possible_actions_ids_dict = get_possible_actions_ids(
+            problem, state, simulator, tokenizer
+        )
+
+        generated_eop = False
+        j = 0
+        while j < args.max_length and not generated_eop:
+            output = model.generate(
+                inputs,
+                do_sample=False,
+                max_new_tokens=1,
+                pad_token_id=tokenizer.pad_token_id,
+                output_scores=True,
+                return_dict_in_generate=True,
+            )
 
                 # Prendo solo le logits relative alle azioni possibili e scelgo quella con probabilità più alta
-                possible_actions_ids = set(possible_actions_ids_dict.keys())
-                possible_actions_ids.add(tokenizer.eos_token_id)
-                logits_mask = torch.tensor(list(token_ids - possible_actions_ids)).to("cuda")
-                logits = output.scores[0]
-                logits[:, logits_mask] = float("-Inf")
-                generated_token = torch.argmax(logits, dim=-1)
+            possible_actions_ids = set(possible_actions_ids_dict.keys())
+            possible_actions_ids.add(tokenizer.eos_token_id)
+            logits_mask = torch.tensor(list(token_ids - possible_actions_ids)).to("cuda")
+            logits = output.scores[0]
+            logits[:, logits_mask] = float("-Inf")
+            generated_token = torch.argmax(logits, dim=-1)
 
                 # if i == 2:
                 #     print(f"Allora: i vale {i}, j vale {j}")
@@ -190,58 +197,66 @@ def main():
                 #     print(f"Il token generato è {generated_token.item()}")
 
                 # Se genero <endofplan> allora ho finito
-                if generated_token.item() == tokenizer.eos_token_id:
-                    generated_eop = True
+            if generated_token.item() == tokenizer.eos_token_id:
+                generated_eop = True
 
                 # Altrimenti uso la sequenza di output ottenuta come input per generare la prossima azione,
                 # aggiorno lo stato andando ad applicare l'azione corrispondente al token generato e
                 # calcolo il nuovo dizionario dei nome_azione-token_id
-                if not generated_eop:
-                    j += 1
+            if not generated_eop:
+                j += 1
                     # tmp = torch.zeros((1, inputs.shape[1] + 1), dtype=inputs.dtype, layout=inputs.layout, device=inputs.device)
                     # tmp[0, :inputs.shape[1]] = inputs
                     # tmp[0, -1] = generated_token
                     # inputs = tmp
-                    inputs = torch.cat([inputs, generated_token[:, None]], dim=-1)
-                    state = apply_action_to_state(
-                        possible_actions_ids_dict[generated_token.item()],
-                        state,
-                        simulator
-                    )
-                    possible_actions_ids_dict = get_possible_actions_ids(
-                        problem, state, simulator, tokenizer
-                    )
+                inputs = torch.cat([inputs, generated_token[:, None]], dim=-1)
+                state = apply_action_to_state(
+                    possible_actions_ids_dict[generated_token.item()],
+                    state,
+                    simulator
+                )
+                possible_actions_ids_dict = get_possible_actions_ids(
+                    problem, state, simulator, tokenizer
+                )
 
-            # L'input da includer nei file di output è quello passato inizialmente
-            decoded_inputs = tokenizer.decode(input_to_decode[0])
-            if generated_eop:
-                output_to_decode = output.sequences[0][batch["actions_idx"] + 1:-1]
-            else:
-                output_to_decode = inputs[0]
+        # L'input da includer nei file di output è quello passato inizialmente
+        decoded_inputs = tokenizer.decode(input_to_decode[0])
+        if generated_eop:
+            output_to_decode = output.sequences[0][batch["actions_idx"] + 1:-1]
+        else:
+            output_to_decode = inputs[0]
 
-            # Se ho generato il token di fine piano lo rimuovo
-            if output_to_decode[-1] == tokenizer.eos_token_id:
-                output_to_decode = output_to_decode[:-1]
-            decoded_outputs = tokenizer.decode(output_to_decode)
-            example_output.append(
-                {
-                    "input": decoded_inputs,
-                    "plan": decoded_outputs,
-                    "real_plan": real_plan,
-                    "actions_seen": i,
-                    "problem_id": problem_id,
-                }
-            )
+        # Se è presente il token di fine piano lo rimuovo
+        if output_to_decode[-1] == tokenizer.eos_token_id:
+            output_to_decode = output_to_decode[:-1]
+        decoded_outputs = tokenizer.decode(output_to_decode)
+        example_output.append(
+            {
+                "input": decoded_inputs,
+                "plan": decoded_outputs,
+                "real_plan": real_plan,
+                "actions_seen": args.actions_seen,
+                "problem_id": problem_id,
+            }
+        )
         eval_output.append(example_output)
+        q, r = divmod(step, args.save_after)
+        if r == (args.save_after - 1):
+            bounds = (q * args.save_after, step)
+            write_output_to_file(output_dir=args.output_dir, eval_output=eval_output, bounds=bounds)
+
+
 
     logger.info("All plans have been processed")
     logger.info("Writing output to file")
-    write_output_to_file(output_dir=args.output_dir, eval_output=eval_output)
+    if bounds[0] + args.save_after <= len(eval_dataloader) - 1:
+        bounds = (bounds[0] + args.save_after, len(eval_dataloader) - 1)
+        write_output_to_file(output_dir=args.output_dir, eval_output=eval_output, bounds=bounds)
     logger.info("Output file written successfully")
 
 
-def write_output_to_file(output_dir=None, eval_output=None):
-    txt_path = Path(output_dir, "output.txt")
+def write_output_to_file(output_dir=None, eval_output=None, bounds=None):
+    txt_path = Path(output_dir, f"output_{bounds[0]}_{bounds[1]}.txt")
     with open(txt_path, "w") as output_file:
         for idx, example_output in enumerate(eval_output):
             output_file.write(f"***** Evaluation on example {idx}  *****\n")
@@ -252,7 +267,7 @@ def write_output_to_file(output_dir=None, eval_output=None):
                 output_file.write(f"--- real_plan: {evaluation['real_plan']}\n")
                 output_file.write(f"------------------------------------------\n")
 
-    json_path = Path(output_dir, "to_validate.json")
+    json_path = Path(output_dir, f"to_validate_{bounds[0]}_{bounds[1]}.json")
     output = []
     for example_output in eval_output:
         for evaluation in example_output:
