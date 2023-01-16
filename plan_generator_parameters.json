@@ -3,6 +3,6 @@
     "tokenizer_path": "../tesi/tokenizer_generation",
     "model_path": "../tesi/gpt2_model",
     "output_dir": "training_gpt",
-    "batch_size": 16,
-    "save_after": 1
+    "batch_size": 8,
+    "save_after": 2
 }

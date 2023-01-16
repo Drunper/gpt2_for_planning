@@ -158,6 +158,8 @@ def main():
     logger.info("Starting generation of plans")
     logger.info(f"Dataset size: {len(tokenized_datasets['train'])}")
     
+    bounds = (0, 0)
+
     actions_token_id = tokenizer.convert_tokens_to_ids("<|actions|>")
     for step, batch in enumerate(test_dataloader):
         if not (step % args.save_after):
@@ -190,9 +192,20 @@ def main():
             generated_plan = outputs[i]
             if generated_plan[-1] == tokenizer.eos_token_id:
                 generated_plan = generated_plan[:-1]
+            else:
+                eop_idx = (generated_plan == tokenizer.eos_token_id).nonzero(as_tuple=True)[0]
+                if eop_idx.shape[0]:
+                    generated_plan = generated_plan[:eop_idx]
+            
+            actions_idx = (generated_plan == actions_token_id).nonzero(as_tuple=True)[0]
+            generated_plan = generated_plan[actions_idx + 1:]
+
+            sop_idx = (batch["input_ids"][i] == tokenizer.bos_token_id).nonzero(as_tuple=True)[0]
+            input_to_decode = batch["input_ids"][i, sop_idx:]
+
             example_output.append(
                 {
-                    "input": tokenizer.decode(batch["input_ids"][i]),
+                    "input": tokenizer.decode(input_to_decode),
                     "plan": tokenizer.decode(generated_plan),
                     "actions_seen": args.actions_seen,
                     "problem_id": problem_ids_list[i],
@@ -202,20 +215,21 @@ def main():
         eval_output.append(example_output)
         q, r = divmod(step, args.save_after)
         if r == (args.save_after - 1):
-            bounds = (q * args.save_after * args.batch_size, (step + 1) * args.batch_size - 1)
-            write_output_to_file(output_dir=args.output_dir, eval_output=eval_output, bounds=bounds)
+            if (q + 1) * args.batch_size - 1 <=  len(test_dataset) - 1:
+                bounds = (q * args.save_after * args.batch_size, (step + 1) * args.batch_size - 1)
+                write_output_to_file(output_dir=args.output_dir, eval_output=eval_output, bounds=bounds)
 
 
     logger.info("All plans have been processed")
-    logger.info("Writing output to file")
     if bounds[1] + 1 <= len(test_dataset) - 1:
         bounds = (bounds[1] + 1, len(test_dataset) - 1)
         write_output_to_file(output_dir=args.output_dir, eval_output=eval_output, bounds=bounds)
-    logger.info("Output file written successfully")
 
 
 def write_output_to_file(output_dir=None, eval_output=None, bounds=None):
     txt_path = Path(output_dir, f"output_{bounds[0]}_{bounds[1]}.txt")
+    json_path = Path(output_dir, f"to_validate_{bounds[0]}_{bounds[1]}.json")
+    logger.info(f"Writing outputs to files {txt_path} and {json_path}")
     with open(txt_path, "w") as output_file:
         for idx, example_output in enumerate(eval_output):
             output_file.write(f"***** Evaluation on example {idx}  *****\n")
@@ -225,7 +239,6 @@ def write_output_to_file(output_dir=None, eval_output=None, bounds=None):
                 output_file.write(f"--- generated_plan: {evaluation['plan']}\n")
                 output_file.write(f"------------------------------------------\n")
 
-    json_path = Path(output_dir, f"to_validate_{bounds[0]}_{bounds[1]}.json")
     output = []
     for example_output in eval_output:
         for evaluation in example_output:
@@ -238,6 +251,7 @@ def write_output_to_file(output_dir=None, eval_output=None, bounds=None):
 
     with open(json_path, "w") as output_file:
         json.dump(output, output_file)
+    logger.info("Output files written successfully")
 
 
 if __name__ == "__main__":
