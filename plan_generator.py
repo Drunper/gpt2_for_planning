@@ -171,7 +171,6 @@ def main():
         for i in range(batch['input_ids'].shape[0]):
             problem_id = dataset["train"][step * args.batch_size + i]["name"].split("-")[-1].split("_")[0]
             problem_ids_list.append(problem_id)
-            logger.info(f"Sample {i} of batch {step} of the test set: {batch['input_ids'][i]}.")
 
         inputs = batch["input_ids"]
         inputs = inputs.to("cuda")
