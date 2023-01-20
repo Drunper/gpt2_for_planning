@@ -130,6 +130,9 @@ dmypy.json
 
 # Training/validation/test folders and files
 training_gpt/
+test_overfitting/
+output2/
+training_10_epochs/
 input/
 output/
 training_parameters.json
