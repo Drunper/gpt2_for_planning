@@ -2,6 +2,8 @@ import sys
 import os
 import json
 import logging
+import torch
+from tqdm import tqdm
 import random
 from dataclasses import dataclass, field
 
@@ -20,7 +22,7 @@ from typing import Optional
 
 
 @dataclass
-class ValidationArgs:
+class GenerationArgs:
     """
     Arguments pertaining to model configuration and validation.
     """
@@ -81,7 +83,7 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    parser = HfArgumentParser(ValidationArgs)
+    parser = HfArgumentParser(GenerationArgs)
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
         # let's parse it to get our arguments.
@@ -104,6 +106,7 @@ def main():
     logger.info("Dataset loaded successfully")
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path)
     model = GPT2PRModel.from_pretrained(args.model_path, device_map="auto")
+
     logger.info("Model loaded successfully")
 
     def get_inputs_for_generation(examples):
@@ -160,32 +163,37 @@ def main():
     
     bounds = (0, 0)
 
+    token_ids = set(range(len(tokenizer)))
     actions_token_id = tokenizer.convert_tokens_to_ids("<|actions|>")
-    for step, batch in enumerate(test_dataloader):
-        if not (step % args.save_after):
-            logger.info(f"Processed {step * args.batch_size} plans of {len(test_dataset)}")
-            eval_output = []
-        example_output = []
-
+    generation_output = []
+    for step, batch in enumerate(tqdm(test_dataloader)):
         problem_ids_list = []
-        for i in range(batch['input_ids'].shape[0]):
-            problem_id = dataset["train"][step * args.batch_size + i]["name"].split("-")[-1].split("_")[0]
+        example_ids_list = []
+        for i in range(batch["input_ids"].shape[0]):
+            instance = dataset["train"][step * args.batch_size + i]["name"].split("-")[
+                -1
+            ]
+            problem_id = instance.split("_")[0]
+            example_id = instance.split(".")[0]
             problem_ids_list.append(problem_id)
+            example_ids_list.append(example_id)
 
         inputs = batch["input_ids"]
-        inputs = inputs.to("cuda")
+        inputs = inputs.to("cuda:0")
 
-        outputs = model.generate(
-            inputs,
-            do_sample=False,
-            max_new_tokens=args.max_length,
-            pad_token_id=tokenizer.pad_token_id,
-            problem_ids_list=problem_ids_list,
-            tokenizer=tokenizer,
-            pddl_dir=args.pddl_dir,
-            pddl_domain_file=args.pddl_domain_file,
-            actions_token_id=actions_token_id
-        )
+        with torch.no_grad():
+            outputs = model.generate(
+                inputs,
+                do_sample=False,
+                max_new_tokens=args.max_length,
+                pad_token_id=tokenizer.pad_token_id,
+                problem_ids_list=problem_ids_list,
+                tokenizer=tokenizer,
+                token_ids=token_ids,
+                pddl_dir=args.pddl_dir,
+                pddl_domain_file=args.pddl_domain_file,
+                actions_token_id=actions_token_id
+            )
            
         for i in range(batch["input_ids"].shape[0]):
             generated_plan = outputs[i]
@@ -202,54 +210,59 @@ def main():
             sop_idx = (batch["input_ids"][i] == tokenizer.bos_token_id).nonzero(as_tuple=True)[0]
             input_to_decode = batch["input_ids"][i, sop_idx:]
 
-            example_output.append(
+            generation_output.append(
                 {
                     "input": tokenizer.decode(input_to_decode),
                     "plan": tokenizer.decode(generated_plan),
                     "actions_seen": args.actions_seen,
                     "problem_id": problem_ids_list[i],
+                    "example_id": example_ids_list[i],
                 }
             )
 
-        eval_output.append(example_output)
         q, r = divmod(step, args.save_after)
         if r == (args.save_after - 1):
-            if (q + 1) * args.batch_size - 1 <=  len(test_dataset) - 1:
-                bounds = (q * args.save_after * args.batch_size, (step + 1) * args.batch_size - 1)
-                write_output_to_file(output_dir=args.output_dir, eval_output=eval_output, bounds=bounds)
+            if (q + 1) * args.batch_size - 1 <= len(test_dataset) - 1:
+                bounds = (
+                    q * args.save_after * args.batch_size,
+                    (step + 1) * args.batch_size - 1,
+                )
+                logger.info(
+                    f"Generated {(step+1) * args.batch_size} plans of {len(test_dataset)}"
+                )
+                write_output_to_file(
+                    output_dir=args.output_dir,
+                    generation_output=generation_output,
+                    bounds=bounds,
+                )
+                generation_output = []
 
 
-    logger.info("All plans have been processed")
+
+    logger.info("All plans have been generated")
     if bounds[1] + 1 <= len(test_dataset) - 1:
         bounds = (bounds[1] + 1, len(test_dataset) - 1)
-        write_output_to_file(output_dir=args.output_dir, eval_output=eval_output, bounds=bounds)
+        write_output_to_file(
+            output_dir=args.output_dir,
+            generation_output=generation_output,
+            bounds=bounds,
+        )
 
 
-def write_output_to_file(output_dir=None, eval_output=None, bounds=None):
+def write_output_to_file(output_dir=None, generation_output=None, bounds=None):
     txt_path = Path(output_dir, f"output_{bounds[0]}_{bounds[1]}.txt")
     json_path = Path(output_dir, f"to_validate_{bounds[0]}_{bounds[1]}.json")
     logger.info(f"Writing outputs to files {txt_path} and {json_path}")
     with open(txt_path, "w") as output_file:
-        for idx, example_output in enumerate(eval_output):
+        for idx, example_output in enumerate(generation_output):
             output_file.write(f"***** Evaluation on example {idx}  *****\n")
-            for evaluation in example_output:
-                output_file.write(f"--- input: {evaluation['input']}\n")
-                output_file.write(f"--- actions_seen: {evaluation['actions_seen']}\n")
-                output_file.write(f"--- generated_plan: {evaluation['plan']}\n")
-                output_file.write(f"------------------------------------------\n")
-
-    output = []
-    for example_output in eval_output:
-        for evaluation in example_output:
-            to_save = {
-                "problem_id": evaluation["problem_id"],
-                "actions_seen": evaluation["actions_seen"],
-                "plan": evaluation["plan"],
-            }
-            output.append(to_save)
+            output_file.write(f"--- input: {example_output['input']}\n")
+            output_file.write(f"--- actions_seen: {example_output['actions_seen']}\n")
+            output_file.write(f"--- generated_plan: {example_output['plan']}\n")
+            output_file.write(f"--- example: {example_output['example_id']}\n")
 
     with open(json_path, "w") as output_file:
-        json.dump(output, output_file)
+        json.dump(generation_output, output_file)
     logger.info("Output files written successfully")
 
 

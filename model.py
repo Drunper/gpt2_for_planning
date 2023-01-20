@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union, List, Callable, Iterable
+from typing import Optional, Tuple, Union, List, Callable, Iterable, Set
 import torch
 import torch.distributed as dist
 import torch.utils.checkpoint
@@ -180,6 +180,7 @@ class GPT2PRModel(GPT2LMHeadModel, SimulationMixin):
         pddl_dir: Optional[str] = None,
         pddl_domain_file: Optional[str] = None,
         actions_token_id: Optional[int] = None,
+        token_ids: Optional[Set[int]] = None,
         **model_kwargs,
     ) -> Union[GreedySearchDecoderOnlyOutput, torch.LongTensor]:
         r"""
@@ -583,6 +584,7 @@ class GPT2PRModel(GPT2LMHeadModel, SimulationMixin):
                 pddl_dir=pddl_dir,
                 pddl_domain_file=pddl_domain_file,
                 actions_token_id=actions_token_id,
+                token_ids=token_ids,
                 **model_kwargs,
             )
 
@@ -604,6 +606,7 @@ class GPT2PRModel(GPT2LMHeadModel, SimulationMixin):
         pddl_dir: Optional[str] = None,
         pddl_domain_file: Optional[str] = None,
         actions_token_id: Optional[int] = None,
+        token_ids: Optional[Set[int]] = None,
         **model_kwargs,
     ) -> Union[GreedySearchDecoderOnlyOutput, torch.LongTensor]:
         r"""
@@ -703,7 +706,6 @@ class GPT2PRModel(GPT2LMHeadModel, SimulationMixin):
         decoder_hidden_states = () if (return_dict_in_generate and output_hidden_states) else None
 
         # Generate problem, state and simulator for every example in the batch, put them in a list
-        token_ids = set(range(len(tokenizer)))
         problems = []
         states = []
         simulators = []

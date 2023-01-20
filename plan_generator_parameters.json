@@ -1,8 +1,9 @@
 {
-    "dataset_file": "20_plans.json",
-    "tokenizer_path": "../tesi/tokenizer_generation",
+    "dataset_file": "../tesi/60_plans.json",
+    "tokenizer_path": "generation_tokenizer",
     "model_path": "../tesi/gpt2_model",
-    "output_dir": "training_gpt",
-    "batch_size": 8,
-    "save_after": 2
+    "output_dir": "../tesi/generation/test_gen_with_up3",
+    "pddl_dir": "../tesi/pddl",
+    "batch_size": 4,
+    "save_after": 5
 }

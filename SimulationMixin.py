@@ -94,12 +94,13 @@ class SimulationMixin:
         return actions_ids_dict
 
     def get_logits_mask(self, possible_actions_ids_dict_list, eos_token_id, token_ids):
+        cuda0 = torch.device("cuda:0")
         logits_mask_list = []
         for possible_actions_ids_dict in possible_actions_ids_dict_list:
             if possible_actions_ids_dict:
                 possible_actions_ids = set(possible_actions_ids_dict.keys())
                 possible_actions_ids.add(eos_token_id)
-                logits_mask_list.append(torch.tensor(list(token_ids - possible_actions_ids)).to("cuda"))
+                logits_mask_list.append(torch.tensor(list(token_ids - possible_actions_ids), device=cuda0))
             else:
-                logits_mask_list.append(torch.tensor([], dtype=torch.long).to("cuda"))
+                logits_mask_list.append(torch.tensor([], dtype=torch.long, device=cuda0))
         return logits_mask_list
