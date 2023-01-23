@@ -17,14 +17,15 @@ from unified_planning.shortcuts import *
 
 
 class SimulationMixin:
+    reader = PDDLReader()
+    grounder = Grounder()
+
     def get_simulation_tools(self, pddl_dir, pddl_domain_file, problem_id):
-        reader = PDDLReader()
-        grounder = Grounder()
-        problem = reader.parse_problem(
+        problem = self.reader.parse_problem(
             pddl_dir + os.sep + pddl_domain_file,
             pddl_dir + os.sep + problem_id + ".pddl",
         )
-        problem = grounder.compile(problem).problem
+        problem = self.grounder.compile(problem).problem
         init_state = UPCOWState(problem.initial_values)
         simulator = SequentialSimulator(problem)
         return problem, init_state, simulator

@@ -40,11 +40,15 @@ class ValidationArgs:
         metadata={"help": "Path to model"},
     )
     output_dir: Optional[str] = field(
-        default="input", metadata={"help": "Output directory"}
+        default="output", metadata={"help": "Output directory"}
     )
     max_length: Optional[int] = field(
         default=60,
         metadata={"help": "Plan max length"},
+    )
+    num_beams: Optional[int] = field(
+        default=1,
+        metadata={"help": "Number of beams for beam search. Default value is 1, which means greedy generation"}
     )
     actions_seen: Optional[int] = field(
         default=0, metadata={"help": "Number of actions to add to the input"}
@@ -88,14 +92,16 @@ def main():
     else:
         (args,) = parser.parse_args_into_dataclasses()
 
-    os.makedirs(args.output_dir, exist_ok=True)
+    plan_output_dir = Path(args.output_dir, f"{args.actions_seen}_actions")
+    plan_output_dir.mkdir(parents=True, exist_ok=True)
+    log_file_path = plan_output_dir.joinpath(args.log_file_name)
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
         handlers=[
             logging.StreamHandler(sys.stdout),
-            logging.FileHandler(os.path.join(args.output_dir, args.log_file_name)),
+            logging.FileHandler(log_file_path),
         ],
     )
 
@@ -177,7 +183,7 @@ def main():
         with torch.no_grad():
             outputs = model.generate(
                 inputs,
-                num_beams=1,
+                num_beams=args.num_beams,
                 do_sample=False,
                 max_new_tokens=args.max_length,
                 pad_token_id=tokenizer.pad_token_id,
@@ -223,7 +229,7 @@ def main():
                     f"Generated {(step+1) * args.batch_size} plans of {len(test_dataset)}"
                 )
                 write_output_to_file(
-                    output_dir=args.output_dir,
+                    output_dir=plan_output_dir,
                     generation_output=generation_output,
                     bounds=bounds,
                 )
@@ -233,7 +239,7 @@ def main():
     if bounds[1] + 1 <= len(test_dataset) - 1:
         bounds = (bounds[1] + 1, len(test_dataset) - 1)
         write_output_to_file(
-            output_dir=args.output_dir,
+            output_dir=plan_output_dir,
             generation_output=generation_output,
             bounds=bounds,
         )

@@ -805,13 +805,11 @@ class GPT2PRModel(GPT2LMHeadModel, SimulationMixin):
             )
 
             # Update states
-            new_states = []
-            new_possible_actions_ids_dict_list = []
             for i in range(next_tokens.shape[0]):
                 generated_token = next_tokens[i]
                 if generated_token == eos_token_id or generated_token == pad_token_id:
-                    new_possible_actions_ids_dict_list.append(None)
-                    new_states.append(None)
+                    possible_actions_ids_dict_list[i] = None
+                    states[i] = None
                 else:
                     action = self.format_action(tokenizer.decode(generated_token))
                     action = self.get_action_by_name(possible_actions_ids_dict_list[i], action)
@@ -819,10 +817,8 @@ class GPT2PRModel(GPT2LMHeadModel, SimulationMixin):
                     possible_actions_ids_dict = self.get_possible_actions_ids(
                         problems[i], new_state, simulators[i], tokenizer
                     )
-                    new_states.append(new_state)
-                    new_possible_actions_ids_dict_list.append(possible_actions_ids_dict)
-            states = new_states
-            possible_actions_ids_dict_list = new_possible_actions_ids_dict_list
+                    states[i] = new_state
+                    possible_actions_ids_dict_list[i] = possible_actions_ids_dict
 
             # if eos_token was found in one sentence, set sentence to finished
             if eos_token_id is not None:
