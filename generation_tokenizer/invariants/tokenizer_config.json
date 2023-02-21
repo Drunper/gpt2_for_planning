@@ -8,5 +8,6 @@
   "mask_token": "<|mask|>",
   "pad_token": "<|pad|>",
   "tokenizer_class": "PreTrainedTokenizerFast",
+  "padding_side": "left",
   "unk_token": "<|unknown|>"
 }
