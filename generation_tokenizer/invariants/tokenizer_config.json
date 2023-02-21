@@ -1,0 +1,12 @@
+{
+  "additional_special_tokens": [
+    "<|goals|>",
+    "<|actions|>"
+  ],
+  "bos_token": "<|startofplan|>",
+  "eos_token": "<|endofplan|>",
+  "mask_token": "<|mask|>",
+  "pad_token": "<|pad|>",
+  "tokenizer_class": "PreTrainedTokenizerFast",
+  "unk_token": "<|unknown|>"
+}
