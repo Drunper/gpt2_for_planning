@@ -243,15 +243,7 @@ def main():
                 new_state = " ".join(initial_state_fluents) + " <|goals|> " + goals
                 output.append(new_state)
             return {"states_shuffled": output}
-
-        with accelerator.main_process_first():
-            pre_processed_datasets = raw_datasets.map(
-                shuffle_initial_state,
-                batched=True,
-                remove_columns=column_names,
-                desc="Shuffling initial state fluents for every example of the dataset"
-            )
-
+        
         def tokenize_function(examples):
             return tokenizer(
                 examples["states_shuffled"],
@@ -262,12 +254,20 @@ def main():
             )
 
         with accelerator.main_process_first():
+            pre_processed_datasets = raw_datasets.map(
+                shuffle_initial_state,
+                batched=True,
+                remove_columns=column_names,
+                desc="Shuffling initial state fluents for every example of the dataset"
+            )
+
             tokenized_datasets = pre_processed_datasets.map(
                 tokenize_function,
                 batched=True,
-                # remove_columns=["states_shuffled", "actions"],
+                remove_columns=["states_shuffled", "actions"],
                 desc="Running tokenizer on dataset",
             )
+
     else:
         column_names = ["name", "states", "actions"]
         def tokenize_function(examples):
