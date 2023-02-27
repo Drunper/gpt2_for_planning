@@ -265,7 +265,7 @@ def main():
             tokenized_datasets = pre_processed_datasets.map(
                 tokenize_function,
                 batched=True,
-                remove_columns=["states_shuffled", "actions"],
+                # remove_columns=["states_shuffled", "actions"],
                 desc="Running tokenizer on dataset",
             )
     else:
