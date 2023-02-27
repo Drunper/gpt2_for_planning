@@ -117,6 +117,9 @@ class ModelTrainingArgs:
     seed: Optional[int] = field(
         default=None, metadata={"help": "A seed for reproducible training."}
     )
+    shuffle_initial_state: Optional[bool] = field(
+        default=False, metadata={"help": "Whether to shuffle fluents of initial states for every example."}
+    )
     checkpointing_steps: Optional[str] = field(
         default=None,
         metadata={
@@ -226,26 +229,63 @@ def main():
     model.resize_token_embeddings(len(tokenizer))
 
     # Preprocessing the datasets.
-    # First we tokenize all the plans.
+    # First we tokenize all the plans.    
+    if args.shuffle_initial_state:
+        column_names = ["name", "states"]
 
-    column_names = ["name", "states", "actions"]
+        def shuffle_initial_state(examples):
+            output = []
+            for state in examples["states"]:
+                initial_state_fluents, goals = state.split(" <|goals|> ")
+                initial_state_fluents = initial_state_fluents.split(" ")
+                random.shuffle(initial_state_fluents)
+                
+                new_state = " ".join(initial_state_fluents) + " <|goals|> " + goals
+                output.append(new_state)
+            return {"states_shuffled": output}
 
-    def tokenize_function(examples):
-        return tokenizer(
-            examples["states"],
-            examples["actions"],
-            return_token_type_ids=False,
-            # max_length=max_length,
-            # padding='max_length',
-        )
+        with accelerator.main_process_first():
+            pre_processed_datasets = raw_datasets.map(
+                shuffle_initial_state,
+                batched=True,
+                remove_columns=column_names,
+                desc="Shuffling initial state fluents for every example of the dataset"
+            )
 
-    with accelerator.main_process_first():
-        tokenized_datasets = raw_datasets.map(
-            tokenize_function,
-            batched=True,
-            remove_columns=column_names,
-            desc="Running tokenizer on dataset",
-        )
+        def tokenize_function(examples):
+            return tokenizer(
+                examples["states_shuffled"],
+                examples["actions"],
+                return_token_type_ids=False,
+                # max_length=max_length,
+                # padding='max_length',
+            )
+
+        with accelerator.main_process_first():
+            tokenized_datasets = pre_processed_datasets.map(
+                tokenize_function,
+                batched=True,
+                remove_columns=["actions"],
+                desc="Running tokenizer on dataset",
+            )
+    else:
+        column_names = ["name", "states", "actions"]
+        def tokenize_function(examples):
+            return tokenizer(
+                examples["states"],
+                examples["actions"],
+                return_token_type_ids=False,
+                # max_length=max_length,
+                # padding='max_length',
+            )
+
+        with accelerator.main_process_first():
+            tokenized_datasets = raw_datasets.map(
+                tokenize_function,
+                batched=True,
+                remove_columns=column_names,
+                desc="Running tokenizer on dataset",
+            )
 
     train_dataset = tokenized_datasets["train"]
     eval_dataset = tokenized_datasets["validation"]
