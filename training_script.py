@@ -261,14 +261,12 @@ def main():
                 desc="Shuffling initial state fluents for every example of the dataset"
             )
 
-            print(pre_processed_datasets['train'][0])
-
-            # tokenized_datasets = pre_processed_datasets.map(
-            #     tokenize_function,
-            #     batched=True,
-            #     remove_columns=["states_shuffled", "actions"],
-            #     desc="Running tokenizer on dataset",
-            # )
+            tokenized_datasets = pre_processed_datasets.map(
+                tokenize_function,
+                batched=True,
+                remove_columns=["states_shuffled", "actions"],
+                desc="Running tokenizer on dataset",
+            )
 
     else:
         column_names = ["name", "states", "actions"]
