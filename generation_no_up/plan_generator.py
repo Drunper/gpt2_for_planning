@@ -78,6 +78,12 @@ class ValidationArgs:
             )
         },
     )
+    shuffle_initial_state: Optional[bool] = field(
+        default=False, metadata={"help": "Whether to shuffle fluents of initial states for every example."}
+    )
+    seed: Optional[int] = field(
+        default=7, metadata={"help": "A seed for reproducible testing."}
+    )
 
 
 logger = logging.getLogger(__name__)
@@ -110,17 +116,6 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path)
     model = GPT2PRModel.from_pretrained(args.model_path, device_map="auto")
 
-    def get_inputs_for_generation(examples):
-        output = []
-        for state, actions in zip(examples["states"], examples["actions"]):
-            example = state + " <|actions|>"
-            action_list = actions.split(" ")
-            action_string = " ".join(action_list[: args.actions_seen])
-            if action_string != "":
-                example = example + " " + action_string
-            output.append(example)
-        return {"input": output}
-
     def tokenize_function(examples):
         return tokenizer(
             examples["input"],
@@ -129,14 +124,64 @@ def main():
             # padding='max_length',
         )
 
-    column_names = ["name", "states", "actions"]
+    if args.shuffle_initial_state:
+        column_names = ["name", "states"]
 
-    pre_processed_dataset = dataset.map(
-        get_inputs_for_generation,
-        batched=True,
-        remove_columns=column_names,
-        desc="Running input pre-processing on dataset",
-    )
+        def shuffle_initial_state(examples):
+            output = []
+            for state in examples["states"]:
+                initial_state_fluents, goals = state.split(" <|goals|> ")
+                initial_state_fluents = initial_state_fluents.split(" ")
+                random.shuffle(initial_state_fluents)
+                
+                new_state = " ".join(initial_state_fluents) + " <|goals|> " + goals
+                output.append(new_state)
+            return {"states_shuffled": output}
+        
+        def get_inputs_for_generation(examples):
+            output = []
+            for state, actions in zip(examples["states_shuffled"], examples["actions"]):
+                example = state + " <|actions|>"
+                action_list = actions.split(" ")
+                action_string = " ".join(action_list[: args.actions_seen])
+                if action_string != "":
+                    example = example + " " + action_string
+                output.append(example)
+            return {"input": output}
+
+        pre_processed_datasets = dataset.map(
+                shuffle_initial_state,
+                batched=True,
+                remove_columns=column_names,
+                desc="Shuffling initial state fluents for every example of the dataset"
+            )
+        
+        pre_processed_dataset = pre_processed_datasets.map(
+            get_inputs_for_generation,
+            batched=True,
+            remove_columns=["states_shuffled", "actions"],
+            desc="Running input pre-processing on dataset",
+        )
+    else:
+        column_names = ["name", "states", "actions"]
+
+        def get_inputs_for_generation(examples):
+            output = []
+            for state, actions in zip(examples["states"], examples["actions"]):
+                example = state + " <|actions|>"
+                action_list = actions.split(" ")
+                action_string = " ".join(action_list[: args.actions_seen])
+                if action_string != "":
+                    example = example + " " + action_string
+                output.append(example)
+            return {"input": output}
+        
+        pre_processed_dataset = dataset.map(
+            get_inputs_for_generation,
+            batched=True,
+            remove_columns=column_names,
+            desc="Running input pre-processing on dataset",
+        )
 
     tokenized_datasets = pre_processed_dataset.map(
         tokenize_function,
