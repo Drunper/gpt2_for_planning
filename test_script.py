@@ -1,6 +1,7 @@
 import torch
 import sys
 import os
+import random
 from dataclasses import dataclass, field
 
 from datasets import load_dataset
@@ -44,6 +45,12 @@ class TestArgs:
         default="",
         metadata={"help": "Output directory"}
     )
+    shuffle_initial_state: Optional[bool] = field(
+        default=False, metadata={"help": "Whether to shuffle fluents of initial states for every example."}
+    )
+    seed: Optional[int] = field(
+        default=7, metadata={"help": "A seed for reproducible testing."}
+    )
 
 def main():
     parser = HfArgumentParser(TestArgs)
@@ -59,23 +66,60 @@ def main():
     model = GPT2PRModel.from_pretrained(args.model_path, device_map="auto")
     metric = evaluate.load("Drunper/metrica_tesi")
 
-    def tokenize_function(examples):
-        return tokenizer(
-            examples["states"],
-            examples["actions"],
-            return_token_type_ids=False,
-            # max_length=max_length,
-            # padding='max_length',
-        )
+    if args.shuffle_initial_state:
+        column_names = ["name", "states"]
 
-    column_names = ["name", "states", "actions"]
+        def shuffle_initial_state(examples):
+            output = []
+            for state in examples["states"]:
+                initial_state_fluents, goals = state.split(" <|goals|> ")
+                initial_state_fluents = initial_state_fluents.split(" ")
+                random.shuffle(initial_state_fluents)
+                
+                new_state = " ".join(initial_state_fluents) + " <|goals|> " + goals
+                output.append(new_state)
+            return {"states_shuffled": output}
+        
+        def tokenize_function(examples):
+            return tokenizer(
+                examples["states_shuffled"],
+                examples["actions"],
+                return_token_type_ids=False,
+                # max_length=max_length,
+                # padding='max_length',
+            )
 
-    tokenized_datasets = dataset.map(
-            tokenize_function,
-            batched=True,
-            remove_columns=column_names,
-            desc="Running tokenizer on dataset",
-        )
+        pre_processed_datasets = dataset.map(
+                shuffle_initial_state,
+                batched=True,
+                remove_columns=column_names,
+                desc="Shuffling initial state fluents for every example of the dataset"
+            )
+
+        tokenized_datasets = pre_processed_datasets.map(
+                tokenize_function,
+                batched=True,
+                remove_columns=["states_shuffled", "actions"],
+                desc="Running tokenizer on dataset",
+            )
+
+    else:
+        column_names = ["name", "states", "actions"]
+        def tokenize_function(examples):
+            return tokenizer(
+                examples["states"],
+                examples["actions"],
+                return_token_type_ids=False,
+                # max_length=max_length,
+                # padding='max_length',
+            )
+
+        tokenized_datasets = dataset.map(
+                tokenize_function,
+                batched=True,
+                remove_columns=column_names,
+                desc="Running tokenizer on dataset",
+            )
 
     data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
 
