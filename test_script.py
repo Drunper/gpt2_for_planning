@@ -66,6 +66,8 @@ def main():
     model = GPT2PRModel.from_pretrained(args.model_path, device_map="auto")
     metric = evaluate.load("Drunper/metrica_tesi")
 
+    random.seed(args.seed)
+
     if args.shuffle_initial_state:
         column_names = ["name", "states"]
 

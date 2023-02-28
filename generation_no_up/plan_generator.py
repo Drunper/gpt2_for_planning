@@ -116,6 +116,8 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path)
     model = GPT2PRModel.from_pretrained(args.model_path, device_map="auto")
 
+    random.seed(args.seed)
+
     def tokenize_function(examples):
         return tokenizer(
             examples["input"],
