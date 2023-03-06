@@ -98,6 +98,10 @@ class ModelTrainingArgs:
             "help": "Number of updates steps to accumulate before performing a backward/update pass."
         },
     )
+    max_train_samples: Optional[int] = field(
+        default=None,
+        metadata={"help": "Number of training samples to use, e.g if this is set to 10000 then the first 10000 samples of the dataset will be used for training."}
+    )
     max_train_steps: Optional[int] = field(
         default=None,
         metadata={
@@ -288,6 +292,9 @@ def main():
             )
 
     train_dataset = tokenized_datasets["train"]
+    if args.max_train_samples:
+        max_train_samples = min(args.max_train_samples, len(train_dataset))
+        train_dataset = train_dataset.select(range(max_train_samples))
     eval_dataset = tokenized_datasets["validation"]
 
     # Log a few random samples from the training set:
