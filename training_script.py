@@ -294,7 +294,7 @@ def main():
     train_dataset = tokenized_datasets["train"]
     if args.max_train_samples:
         max_train_samples = min(args.max_train_samples, len(train_dataset))
-        train_dataset = train_dataset.select(range(max_train_samples))
+        train_dataset = train_dataset.shuffle(seed=args.seed).select(range(max_train_samples))
     eval_dataset = tokenized_datasets["validation"]
 
     # Log a few random samples from the training set:
