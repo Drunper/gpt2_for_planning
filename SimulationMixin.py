@@ -14,6 +14,8 @@ from unified_planning.io.pddl_reader import PDDLReader
 from unified_planning.engines import SequentialSimulator
 from unified_planning.model import UPCOWState
 from unified_planning.shortcuts import *
+from unified_planning.model.walkers import StateEvaluator
+from unified_planning.model import FNode
 
 
 class SimulationMixin:
@@ -28,7 +30,8 @@ class SimulationMixin:
         problem = self.grounder.compile(problem).problem
         init_state = UPCOWState(problem.initial_values)
         simulator = SequentialSimulator(problem)
-        return problem, init_state, simulator
+        state_evaluator = StateEvaluator(problem)
+        return problem, init_state, simulator, state_evaluator
 
     def get_possible_actions(self, problem, state, simulator):
         events = simulator.get_applicable_events(state)
@@ -105,3 +108,6 @@ class SimulationMixin:
             else:
                 logits_mask_list.append(torch.tensor([], dtype=torch.long, device=cuda0))
         return logits_mask_list
+    
+    def check_goals(self, state_evaluator: StateEvaluator, goals: FNode, current_state: UPCOWState):
+        return state_evaluator.evaluate(goals, current_state)

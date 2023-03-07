@@ -709,12 +709,14 @@ class GPT2PRModel(GPT2LMHeadModel, SimulationMixin):
         problems = []
         states = []
         simulators = []
+        state_evaluators = []
         possible_actions_ids_dict_list = []
         for i, problem_id in enumerate(problem_ids_list):
-            problem, initial_state, simulator = self.get_simulation_tools(
+            problem, initial_state, simulator, state_evaluator = self.get_simulation_tools(
                 pddl_dir, pddl_domain_file, problem_id
             )
             problems.append(problem)
+            state_evaluators.append(state_evaluator)
             simulators.append(simulator)
             actions_idx = (input_ids[i, :] == actions_token_id).nonzero(as_tuple=True)[0].item()
             state = initial_state
@@ -820,10 +822,19 @@ class GPT2PRModel(GPT2LMHeadModel, SimulationMixin):
                     states[i] = new_state
                     possible_actions_ids_dict_list[i] = possible_actions_ids_dict
 
+            # Check for goals, eos and pad
+            goals_reached = []
+            for i in range(next_tokens.shape[0]):
+                if states[i]:
+                    goals_reached.append(self.check_goals(state_evaluators[i], problems[i].goals, states[i]))
+                else: # eos and pad
+                    goals_reached.append(False)
+            goals_reached = torch.tensor(goals_reached, dtype=torch.long, device=unfinished_sequences.device)        
+
             # if eos_token was found in one sentence, set sentence to finished
             if eos_token_id is not None:
-                unfinished_sequences = unfinished_sequences.mul((next_tokens != eos_token_id).long())
-
+                unfinished_sequences = unfinished_sequences.mul(goals_reached)
+                        
             # stop when each sentence is finished, or if we exceed the maximum length
             if unfinished_sequences.max() == 0 or stopping_criteria(input_ids, scores):
                 if not synced_gpus:
