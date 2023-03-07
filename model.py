@@ -711,6 +711,7 @@ class GPT2PRModel(GPT2LMHeadModel, SimulationMixin):
         simulators = []
         state_evaluators = []
         possible_actions_ids_dict_list = []
+        seen_states = []
         for i, problem_id in enumerate(problem_ids_list):
             problem, initial_state, simulator, state_evaluator = self.get_simulation_tools(
                 pddl_dir, pddl_domain_file, problem_id
@@ -733,6 +734,7 @@ class GPT2PRModel(GPT2LMHeadModel, SimulationMixin):
             )
             possible_actions_ids_dict_list.append(possible_actions_ids_dict)
             states.append(state)
+            seen_states.append([hash(state)])
 
         #  keep track of which sequences are already finished
         unfinished_sequences = input_ids.new(input_ids.shape[0]).fill_(1)
@@ -800,13 +802,8 @@ class GPT2PRModel(GPT2LMHeadModel, SimulationMixin):
                     raise ValueError("If `eos_token_id` is defined, make sure that `pad_token_id` is defined.")
                 next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
 
-            # update generated ids, model inputs and length for next step
-            input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
-            model_kwargs = self._update_model_kwargs_for_generation(
-                outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
-            )
-
             # Update states
+            sorted_ids = torch.argsort(next_tokens_scores, dim=1, descending=True, stable=True)
             for i in range(next_tokens.shape[0]):
                 generated_token = next_tokens[i]
                 if generated_token == eos_token_id or generated_token == pad_token_id:
@@ -816,17 +813,36 @@ class GPT2PRModel(GPT2LMHeadModel, SimulationMixin):
                     action = self.format_action(tokenizer.decode(generated_token))
                     action = self.get_action_by_name(possible_actions_ids_dict_list[i], action)
                     new_state = self.apply_action_to_state(action, states[i], simulators[i])
+
+                    # If all possible states are visited -> OutOfBounds
+
+                    j = 1
+                    while hash(new_state) in seen_states[i]:
+                        action = self.format_action(tokenizer.decode(sorted_ids[i, j]))
+                        action = self.get_action_by_name(possible_actions_ids_dict_list[i], action)
+                        new_state = self.apply_action_to_state(action, states[i], simulators[i])
+                        j += 1
+
+                    next_tokens[i] = sorted_ids[i, j - 1]
+
+                    states[i] = new_state
+                    seen_states[i].append(hash(new_state))
                     possible_actions_ids_dict = self.get_possible_actions_ids(
                         problems[i], new_state, simulators[i], tokenizer
                     )
-                    states[i] = new_state
                     possible_actions_ids_dict_list[i] = possible_actions_ids_dict
+
+            # update generated ids, model inputs and length for next step
+            input_ids = torch.cat([input_ids, next_tokens[:, None]], dim=-1)
+            model_kwargs = self._update_model_kwargs_for_generation(
+                outputs, model_kwargs, is_encoder_decoder=self.config.is_encoder_decoder
+            )
 
             # Check for goals, eos and pad
             goals_reached = []
             for i in range(next_tokens.shape[0]):
                 if states[i]:
-                    goals_reached.append(self.check_goals(state_evaluators[i], problems[i].goals, states[i]))
+                    goals_reached.append(self.check_goals(state_evaluators[i], problems[i].goals[0], states[i]))
                 else: # eos and pad
                     goals_reached.append(False)
             goals_reached = torch.tensor(goals_reached, dtype=torch.long, device=unfinished_sequences.device)        
