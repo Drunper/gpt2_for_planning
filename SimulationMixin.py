@@ -110,4 +110,4 @@ class SimulationMixin:
         return logits_mask_list
     
     def check_goals(self, state_evaluator: StateEvaluator, goals: FNode, current_state: UPCOWState):
-        return state_evaluator.evaluate(goals, current_state)
+        return state_evaluator.evaluate(goals, current_state).bool_constant_value()
