@@ -803,7 +803,7 @@ class GPT2PRModel(GPT2LMHeadModel, SimulationMixin):
                 next_tokens = next_tokens * unfinished_sequences + pad_token_id * (1 - unfinished_sequences)
 
             # Update states
-            sorted_ids = torch.argsort(next_tokens_scores, dim=1, descending=True, stable=True)
+            _, sorted_ids = torch.sort(next_tokens_scores, dim=1, descending=True, stable=True)
             for i in range(next_tokens.shape[0]):
                 generated_token = next_tokens[i]
                 if generated_token == eos_token_id or generated_token == pad_token_id:
