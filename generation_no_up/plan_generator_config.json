@@ -1,9 +1,0 @@
-{
-    "dataset_file": "60_plans.json",
-    "tokenizer_path": "generation_tokenizer",
-    "model_path": "gpt2_model",
-    "output_dir": "generation/test_gen_beam_search",
-    "pddl_dir": "pddl",
-    "batch_size": 4,
-    "save_after": 5
-}

@@ -1,0 +1,22 @@
+Numero di piani: 226892
+--------------------------------------------------
+Informazioni su dimensione stato iniziale:
+Media: 17.801703012887188
+Deviazione standard: 6.873789957324451
+Minimo: 9
+Massimo: 27
+Mediana: 19.0
+--------------------------------------------------
+Informazioni su dimensione goal:
+Media: 2.669287590571726
+Deviazione standard: 0.7506299239586205
+Minimo: 2
+Massimo: 4
+Mediana: 2.0
+--------------------------------------------------
+Informazioni su numero azioni:
+Media: 28.803355781605344
+Deviazione standard: 21.306855980753948
+Minimo: 3
+Massimo: 382
+Mediana: 25.0

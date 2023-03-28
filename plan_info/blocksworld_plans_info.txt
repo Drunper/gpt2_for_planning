@@ -1,0 +1,22 @@
+Numero di piani: 201706
+--------------------------------------------------
+Informazioni su dimensione stato iniziale:
+Media: 15.237994903473371
+Deviazione standard: 3.670822311161407
+Minimo: 10
+Massimo: 27
+Mediana: 14.0
+--------------------------------------------------
+Informazioni su dimensione goal:
+Media: 9.600165587538298
+Deviazione standard: 3.6924453443812877
+Minimo: 4
+Massimo: 16
+Mediana: 10.0
+--------------------------------------------------
+Informazioni su numero azioni:
+Media: 39.18991502483813
+Deviazione standard: 22.030713131637917
+Minimo: 1
+Massimo: 338
+Mediana: 36.0

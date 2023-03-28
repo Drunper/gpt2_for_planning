@@ -1,0 +1,9 @@
+{
+    "dataset_file": "plans/json/plans_with_invariants/60_plans_with_invariants.json",
+    "tokenizer_path": "tokenizers/generation_with_invariants",
+    "model_path": "models_binary/15_epochs_with_invariants_shuffle",
+    "output_dir": "error_analysis_output/test_greedy_invariants_shuffle",
+    "seed": 7,
+    "shuffle_initial_state": true,
+    "top_k": 5
+}

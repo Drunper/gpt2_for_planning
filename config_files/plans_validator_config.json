@@ -1,0 +1,9 @@
+{
+    "validator_path": "./scripts/testing/validate",
+    "input_dir": "generation_output/test_up",
+    "json_prefix": "to_validate_",
+    "output_dir": "validator_output/test_up",
+    "pddl_dir": "pddl",
+    "pddl_domain_file": "domain.pddl",
+    "log_file_name": "validator.log"
+}

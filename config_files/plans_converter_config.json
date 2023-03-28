@@ -1,0 +1,11 @@
+{
+    "input_pickle": "plans/logistics_plans_with_invariants",
+    "output_dir": "plans/json/plans_with_invariants2",
+    "add_invariants": false,
+    "domain_name": "logistics",
+    "output_pickle": "plans/logistics_plans_with_invariants",
+    "seed": 7,
+    "test_set_size": 0.1,
+    "val_set_size": 0.05,
+    "plans_per_file": 20000
+}
